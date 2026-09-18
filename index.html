@@ -182,6 +182,43 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
 .x{background:none;border:none;color:var(--ink-muted);cursor:pointer;padding:0 4px;font-size:15px;line-height:1}
 .x:hover{color:var(--critical)}
 
+/* estructura de proyecto */
+.seg{display:inline-flex; background:var(--plane); border:1px solid var(--border); border-radius:9px; padding:2px}
+.seg button{background:none;border:none;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:13px;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); font-weight:600; box-shadow:var(--shadow)}
+.grupo{margin-bottom:22px}
+.grupo-head{display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 0 10px; border-bottom:1px solid var(--grid)}
+.grupo-head b{font-size:15px}
+.grupo-head .bar-mini{flex:1; min-width:120px; max-width:220px}
+.nodo{padding:12px 0 14px; border-bottom:1px solid var(--grid)}
+.nodo:last-child{border-bottom:none}
+.nodo-head{display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap}
+.nodo-head .cod{font-variant-numeric:tabular-nums; color:var(--ink-muted); font-size:12.5px; min-width:38px}
+.nodo-head .tit{flex:1; min-width:180px; font-size:14px}
+.nodo-etapas{margin:10px 0 0 48px}
+.etapa-linea{display:flex; gap:9px; align-items:center; padding:5px 0}
+.etapa-linea input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);flex:none;margin:0}
+.etapa-linea .txt{flex:1; font-size:13.5px}
+.etapa-linea.ok .txt{color:var(--ink-muted); text-decoration:line-through}
+.etapa-linea input[type="date"]{width:145px; padding:3px 6px; font-size:12.5px; opacity:.45;
+  transition:opacity .15s}
+.etapa-linea input[type="date"]:hover,.etapa-linea input[type="date"]:focus{opacity:1}
+.etapa-linea input[type="date"]:not([value=""]){opacity:1}
+.etapa-linea .plazo-vencido{color:var(--critical)}
+@media (max-width:640px){ .nodo-etapas{margin-left:0} }
+
+/* vista PDF */
+.pdfbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px}
+.visor{width:100%; height:min(78vh,780px); border:1px solid var(--border); border-radius:12px; background:var(--plane)}
+.galeria{display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:12px}
+.pagina{background:none; border:1px solid var(--border); border-radius:10px; padding:6px; cursor:pointer;
+  display:flex; flex-direction:column; gap:6px; align-items:center}
+.pagina:hover{border-color:var(--accent)}
+.pagina[aria-current="true"]{border-color:var(--accent); box-shadow:0 0 0 2px var(--track)}
+.pagina img{width:100%; height:auto; border-radius:5px; display:block; background:#fff;
+  box-shadow:0 1px 3px rgba(11,11,11,.18)}
+.pagina span{font-size:11.5px; color:var(--ink-muted); font-variant-numeric:tabular-nums}
+
 /* lector del programa */
 .doc{max-width:66ch}
 .doc h3{font-size:19px; margin:26px 0 6px; letter-spacing:-.02em}
@@ -215,6 +252,7 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
   <button class="tab" role="tab" data-vista="panel" aria-selected="true">Panel</button>
   <button class="tab" role="tab" data-vista="propuestas" aria-selected="false">Propuestas</button>
   <button class="tab" role="tab" data-vista="equipos" aria-selected="false">Equipos</button>
+  <button class="tab" role="tab" data-vista="proyecto" aria-selected="false">Proyecto</button>
   <button class="tab" role="tab" data-vista="programa" aria-selected="false">Programa</button>
   <button class="tab" role="tab" data-vista="datos" aria-selected="false">Datos</button>
 </nav>

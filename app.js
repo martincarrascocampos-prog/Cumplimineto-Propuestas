@@ -27,6 +27,44 @@ const NIVELES = [
   { id: 'logro',  txt: 'Logro',          icono: '★', desde: UMBRALES.logro,  ramp: 'var(--ramp-5)', tono: 'good'     }
 ];
 
+/* Estructura tipo de un proyecto FECh: sirve de punto de partida para
+   subdividir cualquier propuesta en etapas medibles. */
+const PLANTILLA_ETAPAS = [
+  'Diagnóstico y levantamiento de información',
+  'Elaboración de la propuesta',
+  'Gestión institucional (mesas, oficios, reuniones)',
+  'Implementación',
+  'Verificación y cuenta pública'
+];
+
+/* El PDF original y las miniaturas viven en la carpeta programa/.
+   En la versión de un solo archivo llegan incrustados en window.PDF_INLINE
+   y window.MINIS_INLINE. */
+const RECURSOS = (() => {
+  let urlPdf = null;
+  const desdeBase64 = (b64, tipo) => {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: tipo }));
+  };
+  return {
+    paginas: 57,
+    pdf() {
+      if (urlPdf) return urlPdf;
+      urlPdf = window.PDF_INLINE
+        ? desdeBase64(window.PDF_INLINE, 'application/pdf')
+        : 'programa/programa-conectemos-la-chile.pdf';
+      return urlPdf;
+    },
+    miniatura(n) {
+      return window.MINIS_INLINE
+        ? 'data:image/webp;base64,' + window.MINIS_INLINE[n - 1]
+        : `programa/paginas/p${String(n).padStart(2, '0')}.webp`;
+    }
+  };
+})();
+
 const PALETA = [
   ['#2a78d6', '#3987e5'], ['#eb6834', '#d95926'], ['#1baf7a', '#199e70'], ['#eda100', '#c98500'],
   ['#e87ba4', '#d55181'], ['#008300', '#008300'], ['#4a3aa7', '#9085e9'], ['#e34948', '#e66767']
@@ -106,6 +144,17 @@ function guardar() {
  * 3. Cálculos
  * ------------------------------------------------------------------ */
 const vigentes = lista => lista.filter(p => p.estado !== 'descartada');
+const conEtapas = p => !!(p.etapas && p.etapas.length);
+const etapasHechas = p => (p.etapas || []).filter(e => e.ok).length;
+
+/* Al marcar o desmarcar etapas el estado se acomoda solo. */
+function sincronizarEstado(p) {
+  if (p.estado === 'descartada' || !conEtapas(p)) return;
+  const h = etapasHechas(p);
+  if (h === p.etapas.length) p.estado = 'cumplida';
+  else if (h > 0) p.estado = 'en_progreso';
+  else if (p.estado === 'cumplida') p.estado = 'en_progreso';
+}
 
 /* Si la propuesta está subdividida en etapas, el avance lo mandan las etapas. */
 function avanceReal(p) {
@@ -137,7 +186,9 @@ function resumen(lista) {
     enRiesgo: cuenta('en_riesgo'),
     noIniciadas: cuenta('no_iniciada'),
     sobreMedia: v.filter(p => avanceReal(p) >= UMBRALES.media).length,
-    conEtapas: v.filter(p => p.etapas && p.etapas.length).length
+    conEtapas: v.filter(conEtapas).length,
+    etapas: v.reduce((a, p) => a + (p.etapas || []).length, 0),
+    etapasListas: v.reduce((a, p) => a + etapasHechas(p), 0)
   };
 }
 
@@ -373,6 +424,48 @@ function tablaResumen(datos, etiquetaCol) {
   return el('div', { class: 'tablewrap' }, t);
 }
 
+/* Una etapa, con su casilla, su nombre y su plazo. La usan la ficha de la
+   propuesta y la vista Proyecto, para que se comporten igual en los dos lados. */
+function filaEtapa(p, i, editable, alMarcar, alReconstruir) {
+  const et = p.etapas[i];
+  const fila = el('div', { class: 'etapa-linea' });
+  const texto = el('span', { class: 'txt', text: et.t });
+
+  const pintarFila = () => {
+    fila.className = 'etapa-linea' + (et.ok ? ' ok' : '');
+    texto.className = 'txt' + (et.f && !et.ok && et.f < hoy() ? ' plazo-vencido' : '');
+  };
+
+  const chk = el('input', { type: 'checkbox', disabled: editable ? null : 'disabled',
+    'aria-label': 'Etapa completada' });
+  chk.checked = !!et.ok;
+  chk.addEventListener('change', () => {
+    et.ok = chk.checked;
+    sincronizarEstado(p);
+    guardar(); pintarFila(); alMarcar();
+  });
+
+  const fecha = el('input', { type: 'date', value: et.f || '', title: 'Plazo de la etapa',
+    disabled: editable ? null : 'disabled' });
+  fecha.addEventListener('change', () => { et.f = fecha.value; guardar(); pintarFila(); alMarcar(); });
+
+  fila.appendChild(chk);
+  fila.appendChild(texto);
+  fila.appendChild(fecha);
+  if (editable) fila.appendChild(el('button', { class: 'x', type: 'button', text: '✕',
+    title: 'Eliminar etapa',
+    onclick: () => { p.etapas.splice(i, 1); sincronizarEstado(p); guardar(); alReconstruir(); } }));
+  pintarFila();
+  return fila;
+}
+
+/* Agrega la estructura tipo a una propuesta que aún no tiene etapas. */
+function aplicarPlantilla(p) {
+  if (conEtapas(p)) return false;
+  p.etapas = PLANTILLA_ETAPAS.map(t => ({ t, ok: false, f: '' }));
+  return true;
+}
+
 /* ------------------------------------------------------------------ *
  * 6. Ficha de la propuesta (panel lateral)
  * ------------------------------------------------------------------ */
@@ -465,28 +558,12 @@ function abrirPropuesta(p) {
   const pintarEtapas = () => {
     listaEtapas.innerHTML = '';
     if (!p.etapas.length) {
-      listaEtapas.appendChild(el('div', { class: 'mini', style: 'color:var(--ink-muted);font-size:13px',
+      listaEtapas.appendChild(el('div', { style: 'color:var(--ink-muted);font-size:13px',
         text: 'Sin etapas. Si divides la propuesta en etapas, el avance se calcula solo.' }));
       return;
     }
-    p.etapas.forEach((et, i) => {
-      const chk = el('input', { type: 'checkbox', disabled: editable ? null : 'disabled' });
-      chk.checked = !!et.ok;
-      chk.addEventListener('change', () => {
-        et.ok = chk.checked;
-        const hechas = p.etapas.filter(x => x.ok).length;
-        if (hechas === p.etapas.length && p.estado !== 'descartada') p.estado = 'cumplida';
-        else if (hechas > 0 && (p.estado === 'no_iniciada' || p.estado === 'cumplida')) p.estado = 'en_progreso';
-        else if (hechas === 0 && p.estado === 'cumplida') p.estado = 'en_progreso';
-        guardar(); pintarEtapas(); refrescar();
-      });
-      const fila = el('div', { class: 'etapa' + (et.ok ? ' lista' : '') }, [
-        chk, el('span', { text: et.t })
-      ]);
-      if (editable) fila.appendChild(el('button', { class: 'x', type: 'button', title: 'Eliminar etapa',
-        text: '✕', onclick: () => { p.etapas.splice(i, 1); guardar(); pintarEtapas(); refrescar(); } }));
-      listaEtapas.appendChild(fila);
-    });
+    p.etapas.forEach((et, i) => listaEtapas.appendChild(
+      filaEtapa(p, i, editable, refrescar, () => { pintarEtapas(); refrescar(); })));
   };
   pintarEtapas();
 
@@ -498,7 +575,7 @@ function abrirPropuesta(p) {
     const agregar = () => {
       const t = inEtapa.value.trim();
       if (!t) return;
-      p.etapas.push({ t, ok: false });
+      p.etapas.push({ t, ok: false, f: '' });
       inEtapa.value = '';
       guardar(); pintarEtapas(); refrescar();
     };
@@ -506,6 +583,9 @@ function abrirPropuesta(p) {
     bloqueEtapas.appendChild(el('div', { class: 'fila', style: 'margin-top:10px' }, [
       inEtapa, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
     ]));
+    if (!p.etapas.length) bloqueEtapas.appendChild(el('div', { style: 'margin-top:8px' },
+      el('button', { class: 'btn btn-sm', type: 'button', text: 'Usar estructura tipo (5 etapas)',
+        onclick: () => { aplicarPlantilla(p); guardar(); pintarEtapas(); refrescar(); } })));
   }
   c.appendChild(bloqueEtapas);
 
@@ -686,8 +766,13 @@ function vistaPanel(raiz) {
         'Las cuatro marcas del medidor son las metas: 50% a medio camino, 70% mínimo, 80% ideal y 90% logro. ' +
         'Los mismos umbrales aplican a cada equipo y a cada eje, para ver quién va quedando atrás.' }),
       el('p', { text:
-        'En la pestaña Programa está el documento completo, con el texto tal cual fue escrito; en Datos se ' +
-        'exporta todo a JSON o a Excel.' })
+        'En Proyecto se ve todo como un plan de trabajo: cada equipo con sus propuestas y cada propuesta ' +
+        'con sus etapas, para marcar avance etapa por etapa y ponerles plazo. Hay una estructura tipo de ' +
+        'cinco etapas que se puede aplicar de una vez a muchas propuestas.' }),
+      el('p', { text:
+        'En Programa está el documento completo: en Lectura, el texto tal cual fue escrito; en PDF original, ' +
+        'las 57 páginas como se imprimen, para verlas y descargar el archivo. En Datos se exporta todo a ' +
+        'JSON o a Excel.' })
     ])
   ]));
 }
@@ -831,9 +916,294 @@ function vistaEquipos(raiz) {
 }
 
 /* ------------------------------------------------------------------ *
- * 10. Vista: Programa (lectura del documento)
+ * 10. Vista: Proyecto (estructura y cumplimiento por etapas)
  * ------------------------------------------------------------------ */
+let agrupacion = 'equipo';
+let soloEstructura = false;
+let verListado = false;
+
+function vistaProyecto(raiz) {
+  const lista = filtradas();
+  const editable = perfil.rol !== 'lector';
+  const r = resumen(lista);
+  const pctEtapas = r.etapas ? Math.round(r.etapasListas / r.etapas * 1000) / 10 : 0;
+
+  /* Encabezado: cuánto del proyecto está desglosado y cuánto de eso está hecho */
+  const kpis = el('div', { class: 'kpis' });
+  const valores = [];
+  ['Propuestas con estructura', 'Etapas definidas', 'Etapas completadas', 'Cumplimiento por etapas']
+    .forEach(txt => {
+      const v = el('b', { text: '—' });
+      valores.push(v);
+      kpis.appendChild(el('div', { class: 'kpi' }, [v, el('span', { text: txt })]));
+    });
+
+  /* Marcar una etapa actualiza los totales de arriba y la barra de su grupo,
+     sin rehacer toda la página. */
+  const grupoRefrescos = [];
+  const refrescarAgregados = () => {
+    const a = resumen(filtradas());
+    valores[0].textContent = `${a.conEtapas} de ${a.vigentes}`;
+    valores[1].textContent = String(a.etapas);
+    valores[2].textContent = String(a.etapasListas);
+    valores[3].textContent = pct(a.etapas ? a.etapasListas / a.etapas * 100 : 0);
+    grupoRefrescos.forEach(f => f());
+  };
+
+  const seg = el('div', { class: 'seg' }, [
+    el('button', { type: 'button', text: 'Por equipo', 'aria-pressed': String(agrupacion === 'equipo'),
+      onclick: () => { agrupacion = 'equipo'; render(); } }),
+    el('button', { type: 'button', text: 'Por eje', 'aria-pressed': String(agrupacion === 'eje'),
+      onclick: () => { agrupacion = 'eje'; render(); } })
+  ]);
+
+  const controles = el('div', { class: 'toolbar' }, [seg]);
+  controles.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
+    text: soloEstructura ? 'Ver todas las propuestas' : 'Ver solo las que tienen etapas',
+    onclick: () => { soloEstructura = !soloEstructura; render(); } }));
+  controles.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
+    text: verListado ? 'Ver estructura' : 'Ver listado de etapas',
+    onclick: () => { verListado = !verListado; render(); } }));
+
+  const sinEstructura = vigentes(lista).filter(p => !conEtapas(p));
+  if (editable && sinEstructura.length) controles.appendChild(el('button', {
+    class: 'btn btn-sm', type: 'button',
+    text: `Aplicar estructura tipo a ${sinEstructura.length} propuesta${sinEstructura.length > 1 ? 's' : ''}`,
+    onclick: () => {
+      if (!confirm(`Se agregarán las 5 etapas tipo a ${sinEstructura.length} propuestas sin estructura ` +
+        `(las que están filtradas ahora). ¿Continuar?`)) return;
+      sinEstructura.forEach(aplicarPlantilla);
+      guardar(); render();
+    } }));
+
+  raiz.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Estructura de proyecto' }),
+    el('div', { class: 'sub', text:
+      'Cada propuesta se subdivide en etapas con su plazo; el cumplimiento se mide etapa por etapa.' }),
+    kpis, el('div', { style: 'margin-top:14px' }, controles)
+  ]));
+
+  if (verListado) { listadoEtapas(raiz, lista, editable); return; }
+
+  /* Árbol: grupo → propuesta → etapas */
+  const grupos = agrupacion === 'equipo'
+    ? estado.equipos.map(e => ({ id: e.id, nombre: e.nombre, color: colorEquipo(e),
+        items: lista.filter(p => p.eq === e.id) }))
+    : estado.ejes.map(e => ({ id: e.id, nombre: `${e.id}. ${e.nombre}`, color: 'var(--ramp-3)',
+        items: lista.filter(p => p.eje === e.id) }));
+
+  const cont = el('div', { class: 'card' });
+  let algo = false;
+
+  grupos.forEach(g => {
+    const items = g.items.filter(p => !soloEstructura || conEtapas(p));
+    if (!items.length) return;
+    algo = true;
+    const bloque = el('div', { class: 'grupo' });
+    const barraG = el('span', { class: 'bar-mini' });
+    const textoG = el('span', { style: 'font-size:12.5px;color:var(--ink-muted)' });
+    const refrescarGrupo = () => {
+      const rg = resumen(items);
+      barraG.innerHTML = '';
+      barraG.appendChild(el('i', { style: `width:${rg.cumplimiento}%; background:${nivelDe(rg.cumplimiento).ramp}` }));
+      textoG.textContent = `${pct(rg.cumplimiento)} · ${rg.etapasListas}/${rg.etapas} etapas · ` +
+        `${items.length} propuesta${items.length === 1 ? '' : 's'}`;
+    };
+    grupoRefrescos.push(refrescarGrupo);
+    refrescarGrupo();
+
+    bloque.appendChild(el('div', { class: 'grupo-head' }, [
+      el('span', { class: 'dot', style: `background:${g.color}` }),
+      el('b', { text: g.nombre }), barraG, textoG
+    ]));
+
+    items.forEach(p => bloque.appendChild(nodoPropuesta(p, editable, refrescarAgregados)));
+    cont.appendChild(bloque);
+  });
+
+  if (!algo) cont.appendChild(el('div', { class: 'empty', text: 'Ninguna propuesta coincide con el filtro.' }));
+  raiz.appendChild(cont);
+  refrescarAgregados();
+}
+
+/* Una propuesta dentro del árbol, con sus etapas y su barra de avance. */
+function nodoPropuesta(p, editable, alMarcar) {
+  const nodo = el('div', { class: 'nodo' });
+  const barra = el('span', { class: 'bar-mini', style: 'max-width:160px' });
+  const marca = el('span', { style: 'font-size:12.5px;color:var(--ink-muted)' });
+  const etapas = el('div', { class: 'nodo-etapas' });
+  const caja = el('span', {});
+
+  const pintarTotales = () => {
+    const a = avanceReal(p);
+    caja.innerHTML = '';
+    caja.appendChild(chipEstado(p.estado));
+    barra.innerHTML = '';
+    barra.appendChild(el('i', { style: `width:${a}%; background:${nivelDe(a).ramp}` }));
+    marca.textContent = conEtapas(p)
+      ? `${etapasHechas(p)}/${p.etapas.length} etapas · ${pct(a)}`
+      : `${pct(a)} · sin etapas`;
+  };
+
+  const pintar = () => {
+    pintarTotales();
+    etapas.innerHTML = '';
+    p.etapas.forEach((et, i) => etapas.appendChild(filaEtapa(p, i, editable,
+      () => { pintarTotales(); if (alMarcar) alMarcar(); }, pintar)));
+
+    if (editable) {
+      const inEtapa = el('input', { type: 'text', placeholder: 'Agregar etapa…', style: 'max-width:320px' });
+      const agregar = () => {
+        const t = inEtapa.value.trim();
+        if (!t) return;
+        p.etapas.push({ t, ok: false, f: '' });
+        guardar(); pintar(); if (alMarcar) alMarcar();
+      };
+      inEtapa.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
+      const acciones = el('div', { class: 'fila', style: 'margin-top:8px' }, [
+        inEtapa, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
+      ]);
+      if (!conEtapas(p)) acciones.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
+        text: 'Estructura tipo', title: 'Agrega las 5 etapas tipo',
+        onclick: () => { aplicarPlantilla(p); guardar(); pintar(); if (alMarcar) alMarcar(); } }));
+      etapas.appendChild(acciones);
+    }
+  };
+
+  nodo.appendChild(el('div', { class: 'nodo-head' }, [
+    el('span', { class: 'cod', text: p.c }),
+    el('button', { class: 'linktitle tit', type: 'button', text: p.t, onclick: () => abrirPropuesta(p) }),
+    caja, barra, marca
+  ]));
+  nodo.appendChild(etapas);
+  pintar();
+  return nodo;
+}
+
+/* El mismo contenido como lista plana: una fila por etapa. */
+function listadoEtapas(raiz, lista, editable) {
+  const filas = [];
+  vigentes(lista).forEach(p => (p.etapas || []).forEach((et, i) => filas.push({ p, et, i })));
+
+  const sub = el('div', { class: 'sub',
+    text: `${filas.filter(f => f.et.ok).length} de ${filas.length} etapas completadas` });
+  const card = el('div', { class: 'card' }, [
+    el('h2', { text: 'Cumplimiento etapa por etapa' }), sub
+  ]);
+  if (!filas.length) {
+    card.appendChild(el('div', { class: 'empty', text: 'Todavía no hay etapas definidas con este filtro.' }));
+    raiz.appendChild(card);
+    return;
+  }
+
+  const t = el('table');
+  t.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: '' }), el('th', { text: 'Cód.' }), el('th', { text: 'Etapa' }),
+    el('th', { text: 'Propuesta' }), el('th', { text: 'Equipo' }), el('th', { text: 'Plazo' })
+  ])));
+  const tb = el('tbody');
+  filas.forEach(({ p, et, i }) => {
+    const chk = el('input', { type: 'checkbox', disabled: editable ? null : 'disabled',
+      'aria-label': 'Etapa completada' });
+    chk.checked = !!et.ok;
+    const fila = el('tr', {}, [
+      el('td', {}, chk),
+      el('td', { text: `${p.c}.${i + 1}` }),
+      el('td', { text: et.t }),
+      el('td', {}, el('button', { class: 'linktitle', type: 'button', text: recorta(p.t, 46),
+        onclick: () => abrirPropuesta(p) })),
+      el('td', { text: (equipoDe(p.eq) || { nombre: '—' }).nombre }),
+      el('td', { text: et.f || '—' })
+    ]);
+    chk.addEventListener('change', () => {
+      et.ok = chk.checked;
+      sincronizarEstado(p);
+      guardar();
+      fila.style.color = et.ok ? 'var(--ink-muted)' : '';
+      sub.textContent = `${filas.filter(f => f.et.ok).length} de ${filas.length} etapas completadas`;
+    });
+    tb.appendChild(fila);
+  });
+  t.appendChild(tb);
+  card.appendChild(el('div', { class: 'tablewrap' }, t));
+  raiz.appendChild(card);
+}
+
+/* ------------------------------------------------------------------ *
+ * 11. Vista: Programa (lectura del documento y PDF original)
+ * ------------------------------------------------------------------ */
+let subPrograma = 'lectura';
+
 function vistaPrograma(raiz) {
+  const seg = el('div', { class: 'seg' }, [
+    el('button', { type: 'button', text: 'Lectura', 'aria-pressed': String(subPrograma === 'lectura'),
+      onclick: () => { subPrograma = 'lectura'; render(); } }),
+    el('button', { type: 'button', text: 'PDF original', 'aria-pressed': String(subPrograma === 'pdf'),
+      onclick: () => { subPrograma = 'pdf'; render(); } })
+  ]);
+  raiz.appendChild(el('div', { class: 'card', style: 'padding:12px 16px' }, el('div', { class: 'toolbar',
+    style: 'margin:0' }, [
+    el('div', {}, [
+      el('h2', { text: 'Programa Conectemos la Chile · FECh 2026' }),
+      el('div', { class: 'sub', style: 'margin:0', text: subPrograma === 'lectura'
+        ? 'El texto del documento, propuesta por propuesta.'
+        : 'El documento original, tal como se imprime.' })
+    ]),
+    el('span', { class: 'count' }), seg
+  ])));
+  if (subPrograma === 'pdf') programaPDF(raiz);
+  else programaLectura(raiz);
+}
+
+/* Vista previa del PDF: galería de páginas y visor del archivo original. */
+function programaPDF(raiz) {
+  const url = RECURSOS.pdf();
+  let pagina = 1;
+
+  const visor = el('iframe', { class: 'visor', title: 'Programa Conectemos la Chile (PDF)',
+    src: url + '#page=1&view=FitH' });
+
+  const indicador = el('span', { style: 'font-size:12.5px;color:var(--ink-muted)' });
+  const irA = n => {
+    pagina = n;
+    visor.src = `${url}#page=${n}&view=FitH`;
+    indicador.textContent = `Página ${n} de ${RECURSOS.paginas}`;
+    galeria.querySelectorAll('.pagina').forEach((b, i) =>
+      b.setAttribute('aria-current', String(i + 1 === n)));
+    visor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const galeria = el('div', { class: 'galeria' });
+  for (let n = 1; n <= RECURSOS.paginas; n++) {
+    galeria.appendChild(el('button', { class: 'pagina', type: 'button',
+      'aria-current': String(n === 1), title: `Ir a la página ${n}`, onclick: () => irA(n) }, [
+      el('img', { src: RECURSOS.miniatura(n), alt: `Página ${n} del programa`, loading: 'lazy' }),
+      el('span', { text: String(n) })
+    ]));
+  }
+  indicador.textContent = `Página 1 de ${RECURSOS.paginas}`;
+
+  const barra = el('div', { class: 'pdfbar' }, [
+    el('a', { class: 'btn btn-primary', href: url, download: 'Programa-Conectemos-la-Chile-FECh-2026.pdf',
+      text: 'Descargar el PDF' }),
+    el('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener', text: 'Abrir en otra pestaña' }),
+    indicador
+  ]);
+
+  raiz.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Documento original' }),
+    el('div', { class: 'sub', text: 'Las 57 páginas tal cual, sin intervención.' }),
+    barra, visor
+  ]));
+
+  raiz.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Páginas' }),
+    el('div', { class: 'sub', text: 'Toca una página para abrirla en el visor de arriba.' }),
+    galeria
+  ]));
+}
+
+function programaLectura(raiz) {
   const ejeFiltrado = filtros.eje ? Number(filtros.eje) : null;
 
   const indice = el('div', { class: 'indice' }, estado.ejes.map(ej =>
@@ -842,8 +1212,8 @@ function vistaPrograma(raiz) {
       onclick: () => { filtros.eje = ejeFiltrado === ej.id ? '' : String(ej.id); poblarFiltros(); render(); } })));
 
   raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Programa Conectemos la Chile · FECh 2026' }),
-    el('div', { class: 'sub', text: 'El documento tal como fue escrito. Usa el índice o el buscador de arriba.' }),
+    el('h2', { text: 'Índice' }),
+    el('div', { class: 'sub', text: 'Toca un eje para leerlo solo, o usa el buscador de arriba.' }),
     indice,
     ejeFiltrado ? el('div', { class: 'note', text: 'Mostrando un eje. Vuelve a tocar el botón para ver el programa completo.' }) : null
   ]));
@@ -881,7 +1251,7 @@ function vistaPrograma(raiz) {
 }
 
 /* ------------------------------------------------------------------ *
- * 11. Vista: Datos
+ * 12. Vista: Datos
  * ------------------------------------------------------------------ */
 function descargar(nombre, contenido, tipo) {
   const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
@@ -977,7 +1347,7 @@ function vistaDatos(raiz) {
 }
 
 /* ------------------------------------------------------------------ *
- * 12. Router, filtros y arranque
+ * 13. Router, filtros y arranque
  * ------------------------------------------------------------------ */
 function poblarFiltros() {
   const fEq = $('#f-equipo'), fEje = $('#f-eje'), fEst = $('#f-estado');
@@ -1000,6 +1370,7 @@ function render() {
   if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'propuestas') vistaPropuestas(raiz);
   else if (vista === 'equipos') vistaEquipos(raiz);
+  else if (vista === 'proyecto') vistaProyecto(raiz);
   else if (vista === 'programa') vistaPrograma(raiz);
   else vistaDatos(raiz);
 }
