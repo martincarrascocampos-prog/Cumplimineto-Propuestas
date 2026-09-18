@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cumplimiento Programático · Conectemos la Chile</title>
-<meta name="description" content="Prototipo de seguimiento del cumplimiento del programa FECh 2026: responsables por equipo, avance, proyección y umbrales 70 / 80 / 90.">
+<title>Conectómetro · Cumplimiento del programa FECh 2026</title>
+<meta name="description" content="Seguimiento del cumplimiento del programa Conectemos la Chile: equipos responsables, etapas, observaciones y umbrales 50 / 70 / 80 / 90.">
 <style>
 :root{
   color-scheme: light;
   --surface:#fcfcfb; --plane:#f9f9f7;
   --ink:#0b0b0b; --ink-2:#52514e; --ink-muted:#898781;
   --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
-  --ramp-1:#86b6ef; --ramp-2:#5598e7; --ramp-3:#2a78d6; --ramp-4:#184f95;
+  --ramp-1:#86b6ef; --ramp-2:#5598e7; --ramp-3:#2a78d6; --ramp-4:#1c5cab; --ramp-5:#104281;
   --track:#e8eef7;
-  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
   --accent:#2a78d6;
   --shadow:0 1px 2px rgba(11,11,11,.06), 0 8px 24px rgba(11,11,11,.05);
 }
@@ -23,7 +23,7 @@
     --surface:#1a1a19; --plane:#0d0d0d;
     --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
     --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-    --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec;
+    --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec; --ramp-5:#9ec5f4;
     --track:#22262c;
     --accent:#3987e5;
     --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
@@ -34,7 +34,7 @@
   --surface:#1a1a19; --plane:#0d0d0d;
   --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
   --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-  --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec;
+  --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec; --ramp-5:#9ec5f4;
   --track:#22262c;
   --accent:#3987e5;
   --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
@@ -46,19 +46,19 @@ body{
   font-family:system-ui,-apple-system,"Segoe UI",sans-serif; font-size:15px; line-height:1.5;
 }
 h1,h2,h3{margin:0; font-weight:600; letter-spacing:-.01em}
-button,select,input{font:inherit; color:inherit}
+button,select,input,textarea{font:inherit; color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 
-/* ---------- estructura ---------- */
 header.top{
   display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between;
   padding:14px 16px; background:var(--surface); border-bottom:1px solid var(--border);
   position:sticky; top:0; z-index:20;
 }
 .brand{display:flex; align-items:center; gap:10px; min-width:0}
-.brand-mark{width:28px;height:28px;border-radius:8px;flex:none;
-  background:linear-gradient(135deg,var(--ramp-3),var(--ramp-4))}
-.brand b{display:block; font-size:15px}
+.brand-mark{width:30px;height:30px;border-radius:9px;flex:none;
+  background:linear-gradient(135deg,var(--ramp-3),var(--ramp-5))}
+.brand b{display:block; font-size:16px; letter-spacing:-.02em}
 .brand span{display:block; font-size:12.5px; color:var(--ink-2)}
 .top-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
 
@@ -79,19 +79,19 @@ select,input[type="search"],input[type="text"],input[type="date"],input[type="nu
   background:var(--surface); border:1px solid var(--border); border-radius:8px;
   padding:7px 9px; width:100%;
 }
+textarea{resize:vertical; min-height:70px; line-height:1.45}
 .btn{background:var(--surface); border:1px solid var(--border); border-radius:8px;
   padding:7px 12px; cursor:pointer; white-space:nowrap}
 .btn:hover{border-color:var(--axis)}
 .btn-primary{background:var(--accent); border-color:transparent; color:#fff; font-weight:500}
 .btn-ghost{background:none}
+.btn-sm{padding:3px 9px; font-size:13px}
 
 .card{background:var(--surface); border:1px solid var(--border); border-radius:14px;
   padding:16px; box-shadow:var(--shadow); margin-bottom:16px}
 .card > h2{font-size:15px; margin-bottom:2px}
 .card > .sub{font-size:12.5px; color:var(--ink-muted); margin-bottom:14px}
-.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:16px}
 
-/* ---------- hero + medidor ---------- */
 .hero{display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start}
 .hero-figure{flex:1 1 220px; min-width:220px}
 .hero-value{font-size:clamp(44px,9vw,64px); font-weight:650; line-height:1; letter-spacing:-.03em}
@@ -105,12 +105,12 @@ select,input[type="search"],input[type="text"],input[type="date"],input[type="nu
 .meter-line{position:absolute; top:0; bottom:0; width:1px; background:var(--axis); opacity:.9}
 .meter-proj{position:absolute; top:-4px; bottom:-4px; width:2px; background:var(--ink-2); border-radius:2px}
 
-.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; margin-top:4px}
+.kpis{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px}
 .kpi{background:var(--plane); border:1px solid var(--border); border-radius:10px; padding:10px 12px}
 .kpi b{display:block; font-size:24px; font-weight:600; letter-spacing:-.02em}
 .kpi span{font-size:12px; color:var(--ink-2)}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px}
 
-/* ---------- chips de nivel / estado ---------- */
 .chip{display:inline-flex; align-items:center; gap:5px; font-size:12px; padding:2px 8px;
   border-radius:999px; border:1px solid var(--border); background:var(--plane); white-space:nowrap}
 .chip i{font-style:normal; font-size:11px}
@@ -118,9 +118,7 @@ select,input[type="search"],input[type="text"],input[type="date"],input[type="nu
 .chip.critical i{color:var(--critical)} .chip.neutral i{color:var(--ink-muted)}
 .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:none}
 
-/* ---------- charts ---------- */
 .chart{width:100%; overflow:visible; display:block}
-.chart text{font-family:inherit}
 .legend{display:flex; flex-wrap:wrap; gap:14px; margin:10px 0 0; font-size:12px; color:var(--ink-2)}
 .legend i{display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:-2px}
 .legend .key-line{width:14px;height:0;border-top:2px dashed var(--ink-2);border-radius:0}
@@ -130,7 +128,6 @@ select,input[type="search"],input[type="text"],input[type="date"],input[type="nu
 .tt b{display:block; font-size:15px; font-variant-numeric:tabular-nums}
 .tt span{color:var(--ink-2)}
 
-/* ---------- tablas ---------- */
 .tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface)}
 table{border-collapse:collapse; width:100%; font-size:13.5px}
 th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--grid); vertical-align:middle}
@@ -140,19 +137,62 @@ tbody tr:hover{background:var(--plane)}
 tr:last-child td{border-bottom:none}
 td .mini{font-size:12px; color:var(--ink-muted)}
 td select,td input{padding:4px 6px; border-radius:6px; font-size:13px}
-.w-avance{width:76px}
+.w-avance{width:72px}
 .w-estado{min-width:132px}
+.linktitle{background:none;border:none;padding:0;text-align:left;cursor:pointer;
+  color:var(--ink); font:inherit; text-decoration:underline; text-decoration-color:var(--axis);
+  text-underline-offset:3px}
+.linktitle:hover{text-decoration-color:var(--accent)}
 
 .bar-mini{height:6px; background:var(--track); border-radius:3px; overflow:hidden; min-width:60px}
 .bar-mini i{display:block; height:100%; border-radius:0 3px 3px 0}
-
 .empty{padding:28px; text-align:center; color:var(--ink-muted)}
 .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center}
 .count{font-size:13px; color:var(--ink-2); margin-left:auto}
+.note{font-size:13px; color:var(--ink-2); background:var(--plane); border:1px solid var(--border);
+  border-radius:10px; padding:12px 14px}
+.note p{margin:0 0 8px} .note p:last-child{margin:0}
 footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-size:12px}
-.note{font-size:12.5px; color:var(--ink-2); background:var(--plane); border:1px solid var(--border);
-  border-radius:10px; padding:10px 12px}
-@media (max-width:640px){ main{padding:12px} .card{padding:13px} }
+
+/* panel lateral de la propuesta */
+.drawer[hidden]{display:none}
+.drawer{position:fixed; inset:0; z-index:50; display:flex; justify-content:flex-end}
+.drawer-bg{position:absolute; inset:0; background:rgba(11,11,11,.38)}
+.drawer-body{position:relative; width:min(560px,100%); background:var(--surface);
+  border-left:1px solid var(--border); display:flex; flex-direction:column; box-shadow:var(--shadow)}
+.drawer-head{display:flex; gap:12px; align-items:flex-start; justify-content:space-between;
+  padding:16px; border-bottom:1px solid var(--border)}
+.drawer-scroll{overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:18px}
+.bloque h3{font-size:13px; color:var(--ink-muted); font-weight:600; margin-bottom:8px;
+  text-transform:uppercase; letter-spacing:.04em}
+.literal{background:var(--plane); border:1px solid var(--border); border-left:3px solid var(--ramp-3);
+  border-radius:0 10px 10px 0; padding:12px 14px; font-size:14px; line-height:1.6; color:var(--ink-2)}
+.literal p{margin:0 0 10px} .literal p:last-child{margin:0}
+.doc .prop p{margin:0 0 10px}
+.fila{display:flex; gap:8px; align-items:center}
+.fila + .fila{margin-top:8px}
+.etapa{display:flex; gap:9px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--grid)}
+.etapa:last-of-type{border-bottom:none}
+.etapa input[type="checkbox"]{width:17px;height:17px;margin:2px 0 0;accent-color:var(--accent);flex:none}
+.etapa span{flex:1; font-size:14px}
+.etapa.lista span{color:var(--ink-muted); text-decoration:line-through}
+.obs{display:flex; gap:8px; align-items:flex-start; border-left:2px solid var(--axis);
+  padding:2px 0 2px 11px; margin-bottom:11px; font-size:14px}
+.obs time{display:block; font-size:11.5px; color:var(--ink-muted); margin-bottom:2px}
+.x{background:none;border:none;color:var(--ink-muted);cursor:pointer;padding:0 4px;font-size:15px;line-height:1}
+.x:hover{color:var(--critical)}
+
+/* lector del programa */
+.doc{max-width:66ch}
+.doc h3{font-size:19px; margin:26px 0 6px; letter-spacing:-.02em}
+.doc h4{font-size:14px; color:var(--ink-muted); margin:20px 0 4px; text-transform:uppercase; letter-spacing:.05em}
+.doc p{margin:0 0 14px; line-height:1.65; color:var(--ink-2)}
+.doc .prop{margin:0 0 20px}
+.doc .prop b{display:block; font-size:15px; color:var(--ink); margin-bottom:4px}
+.doc .prop .cod{font-variant-numeric:tabular-nums; color:var(--ink-muted); font-weight:400}
+.indice{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
+.indice button{font-size:12.5px}
+@media (max-width:640px){ main{padding:12px} .card{padding:13px} .drawer-body{width:100%} }
 </style>
 </head>
 <body>
@@ -161,7 +201,7 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
   <div class="brand">
     <span class="brand-mark" aria-hidden="true"></span>
     <span>
-      <b>Conectemos la Chile</b>
+      <b>Conectómetro</b>
       <span>Cumplimiento del programa · FECh 2026</span>
     </span>
   </div>
@@ -175,6 +215,7 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
   <button class="tab" role="tab" data-vista="panel" aria-selected="true">Panel</button>
   <button class="tab" role="tab" data-vista="propuestas" aria-selected="false">Propuestas</button>
   <button class="tab" role="tab" data-vista="equipos" aria-selected="false">Equipos</button>
+  <button class="tab" role="tab" data-vista="programa" aria-selected="false">Programa</button>
   <button class="tab" role="tab" data-vista="datos" aria-selected="false">Datos</button>
 </nav>
 
@@ -182,13 +223,28 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
   <label class="field"><span>Equipo</span><select id="f-equipo"></select></label>
   <label class="field"><span>Eje</span><select id="f-eje"></select></label>
   <label class="field"><span>Estado</span><select id="f-estado"></select></label>
-  <label class="field grow"><span>Buscar</span><input type="search" id="f-texto" placeholder="Código, propuesta o responsable"></label>
+  <label class="field grow"><span>Buscar</span><input type="search" id="f-texto" placeholder="Código, propuesta o texto del programa"></label>
   <button class="btn btn-ghost" id="f-limpiar">Limpiar</button>
 </section>
 
 <main id="vista"></main>
+
+<div id="drawer" class="drawer" hidden role="dialog" aria-modal="true" aria-labelledby="drawer-t">
+  <div class="drawer-bg" data-cerrar></div>
+  <div class="drawer-body">
+    <div class="drawer-head">
+      <div>
+        <div class="mini" id="drawer-cod" style="font-size:12px;color:var(--ink-muted)"></div>
+        <h2 id="drawer-t" style="font-size:17px"></h2>
+      </div>
+      <button class="btn btn-ghost" data-cerrar aria-label="Cerrar">✕</button>
+    </div>
+    <div class="drawer-scroll" id="drawer-c"></div>
+  </div>
+</div>
+
 <div id="tt" class="tt" hidden></div>
-<footer>Umbrales de cumplimiento: mínimo 70% · ideal 80% · logro 90% — prototipo, los datos se guardan en este navegador.</footer>
+<footer>Conectómetro — umbrales: 50% media · 70% mínimo · 80% ideal · 90% logro. Los datos se guardan en este navegador.</footer>
 
 <script src="data.js"></script>
 <script src="app.js"></script>
