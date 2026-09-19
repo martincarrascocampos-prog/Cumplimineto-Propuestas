@@ -12,7 +12,11 @@ const PUERTO = process.env.PORT || 3000;
    en su pantalla de Conexión. */
 app.get('/config.js', (_req, res) => {
   const url = process.env.SUPABASE_URL || '';
-  const clave = process.env.SUPABASE_ANON_KEY || '';
+  /* Supabase renombró sus llaves: la "publishable" de ahora es la "anon" de antes.
+     Aceptamos cualquiera de los dos nombres para no depender de cuál copiaste. */
+  const clave = process.env.SUPABASE_PUBLISHABLE_KEY
+    || process.env.SUPABASE_ANON_KEY
+    || '';
   res.type('application/javascript');
   res.send(url && clave
     ? `window.SUPABASE_URL=${JSON.stringify(url)};window.SUPABASE_ANON_KEY=${JSON.stringify(clave)};`

@@ -116,7 +116,7 @@ window.SECCION = 'conecto';
 window.PDF_INLINE = "{pdf}";
 window.MINIS_INLINE = ["{'","'.join(minis)}"];
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
 {codigo[0]}
 </script>

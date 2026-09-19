@@ -58,10 +58,13 @@ Te queda una dirección tipo `https://conectometro.tu-usuario.replit.app`.
 
 8. Menú lateral → **Project Settings** (el engranaje) → **API**.
 9. Copia estos dos valores:
-   - **Project URL** → algo como `https://abcdefghijk.supabase.co`
-   - **Project API keys → anon public** → una clave larga que empieza con `eyJ...`
+   - **Project URL** → algo como `https://abcdefghijk.supabase.co`, en *Project Settings → Data API*
+   - La llave pública → en *Project Settings → API Keys*:
+     - Proyectos nuevos: **Publishable key**, empieza con `sb_publishable_...`
+     - Proyectos antiguos: **anon public**, empieza con `eyJ...`
 
-   La clave `service_role` **no se usa acá**: esa nunca va en la aplicación.
+   Las **Secret keys** (o `service_role`) **no se usan acá**: dan acceso total saltándose
+   los permisos y sólo van en servidores.
 
 ### 2.4 Pegarlas en Replit
 
@@ -71,7 +74,7 @@ Te queda una dirección tipo `https://conectometro.tu-usuario.replit.app`.
     | Key | Value |
     |---|---|
     | `SUPABASE_URL` | la Project URL del paso 9 |
-    | `SUPABASE_ANON_KEY` | la clave anon public del paso 9 |
+    | `SUPABASE_ANON_KEY` | la llave pública del paso 9 (publishable o anon) |
 
 12. Detén y vuelve a dar **Run**. Si ya estaba publicado, aprieta **Deploy** otra vez.
 
