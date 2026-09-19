@@ -140,6 +140,60 @@ Te queda una dirección tipo `https://conectometro.tu-usuario.replit.app`.
 | Se ve en tu computador pero no en el del resto | Están abriendo el archivo HTML suelto en vez de la dirección de Replit |
 | Supabase dice que el proyecto está pausado | Plan gratis: se duerme tras una semana sin uso. Se despierta con un clic en su panel |
 
+---
+
+## Cómo actualizar cuando hay cambios nuevos
+
+Cada vez que yo suba algo, esta es la rutina. Toma un minuto.
+
+### 1. Traer los cambios
+
+En Replit, panel izquierdo → icono de **Git** → **Pull**.
+
+Para confirmar que entró, mira el último commit que muestra ese panel: debe ser el que te
+anuncié en el chat.
+
+**Si el Pull se niega o no hace nada**, casi siempre es porque hay cambios locales sin guardar.
+Abre la pestaña **Shell** (también en el panel izquierdo) y escribe:
+
+```bash
+git status          # muestra si hay cambios tuyos sin guardar
+git stash           # los guarda aparte para que no estorben
+git pull            # ahora sí trae lo nuevo
+```
+
+Si `git status` sale limpio y aun así no traía nada, con `git pull` en el Shell basta.
+
+### 2. Reiniciar
+
+Botón **Run** arriba. Si ya estaba corriendo, detén y vuelve a darle.
+
+### 3. Publicar (este es el que se olvida)
+
+**Run solo actualiza tu ventana de prueba.** La dirección que usa el equipo —la que termina en
+`.replit.app`— se queda en la versión anterior hasta que aprietas **Deploy** otra vez.
+
+Regla simple: **Pull → Run → Deploy**. Si te saltas el tercero, tú ves lo nuevo y el resto no.
+
+### 4. Recargar el navegador
+
+**Ctrl+Shift+R** (Cmd+Shift+R en Mac). El navegador guarda la página y a veces sigue mostrando
+la anterior aunque el servidor ya tenga la nueva.
+
+### 5. Cuando además cambia la base de datos
+
+Te lo voy a avisar explícitamente. En esos casos hay un paso más: entrar a Supabase →
+**SQL Editor** → pegar y ejecutar lo que te indique (o el `esquema.sql` completo, que se puede
+volver a correr sin romper nada). Eso va **antes** del Pull.
+
+### Comprobación rápida
+
+Si dudas de qué versión estás viendo, revisa que estén las novedades anunciadas. Hoy, por ejemplo:
+el Conectómetro no debe tener pestaña *Datos*, el SPT debe tener pestaña *Panel*, y en *Equipo*
+debe haber una columna *Horarios*.
+
+---
+
 ## Orden recomendado
 
 Haz **1** y comprueba que la aplicación abre. Después **2** y comprueba con el celular.
