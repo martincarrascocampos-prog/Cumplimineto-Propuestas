@@ -104,17 +104,34 @@ create index if not exists obs_por_codigo     on observaciones (codigo);
 create index if not exists proy_por_propuesta on proyectos (propuesta);
 create index if not exists enlaces_por_proyecto on enlaces (proyecto);
 
--- Acceso: por ahora, quien tenga la URL y la clave pública puede leer y escribir.
--- Sirve para partir con el equipo. Cuando quieran cuentas con contraseña, se
+-- Acceso (RLS). Se activa en todas las tablas y se crea una política que permite
+-- leer y escribir con la clave pública del proyecto. Es a propósito: así las seis
+-- personas del equipo entran sin cuentas. Cuando quieran usuario y contraseña, se
 -- cambia 'anon' por 'authenticated' y se activa el login de Supabase.
+alter table equipos       enable row level security;
+alter table seguimiento   enable row level security;
+alter table observaciones enable row level security;
+alter table proyectos     enable row level security;
+alter table pasos         enable row level security;
+alter table hitos         enable row level security;
+alter table agenda        enable row level security;
+alter table integrantes   enable row level security;
+alter table enlaces       enable row level security;
+
+-- La política se crea sólo si falta, para poder volver a ejecutar este archivo
+-- sin borrar nada.
 do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
                            'hitos','agenda','integrantes','enlaces']
   loop
-    execute format('alter table %I enable row level security', t);
-    execute format('drop policy if exists "acceso equipo" on %I', t);
-    execute format('create policy "acceso equipo" on %I for all to anon using (true) with check (true)', t);
+    if not exists (
+      select 1 from pg_policies
+      where schemaname = 'public' and tablename = t and policyname = 'acceso equipo'
+    ) then
+      execute format(
+        'create policy "acceso equipo" on %I for all to anon using (true) with check (true)', t);
+    end if;
   end loop;
 end $$;
