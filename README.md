@@ -11,6 +11,16 @@ las etapas de esa propuesta: marcar un paso en el SPT sube el cumplimiento en el
 
 Para publicarlo en Replit con base compartida en Supabase, ver **[PUBLICAR.md](PUBLICAR.md)**.
 
+Para una versión de **un solo archivo** que se abre con doble clic (las dos secciones y el PDF
+del programa adentro, sin carpeta ni servidor):
+
+```
+python3 construir-un-archivo.py
+```
+
+Genera `Conectometro-FECh-2026.html`. Sirve para revisar, mostrar o compartir por correo; los datos
+quedan en ese navegador salvo que se conecte Supabase desde la pestaña Conexión.
+
 ## Cumplimiento del programa FECh 2026
 
 Aplicación web para hacer seguimiento al cumplimiento del **programa "Conectemos la Chile"**:

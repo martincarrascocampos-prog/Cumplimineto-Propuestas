@@ -93,6 +93,7 @@ let filtros = { equipo: '', eje: '', estado: '', texto: '' };
 let vista = 'panel';
 let perfil = PERFILES[0];
 let redibujables = [];
+let oyentesGlobales = false;
 
 /* Una etapa es un paso del SPT visto con los nombres del Conectómetro. */
 function vistaEtapa(paso) {
@@ -1492,7 +1493,7 @@ async function iniciar() {
     poblarFiltros(); render();
   });
 
-  $('#btn-tema').addEventListener('click', () => {
+  if (!window.UNARCHIVO) $('#btn-tema').addEventListener('click', () => {
     const actual = document.documentElement.dataset.theme;
     const siguiente = actual === 'dark' ? 'light' : actual === 'light' ? '' : (oscuro() ? 'light' : 'dark');
     if (siguiente) document.documentElement.dataset.theme = siguiente;
@@ -1500,12 +1501,21 @@ async function iniciar() {
     render();
   });
 
-  let t;
-  addEventListener('resize', () => { clearTimeout(t); t = setTimeout(() => redibujables.forEach(f => f()), 150); });
+  if (!oyentesGlobales) {
+    oyentesGlobales = true;
+    let t;
+    addEventListener('resize', () => {
+      if (window.UNARCHIVO && window.SECCION !== 'conecto') return;
+      clearTimeout(t);
+      t = setTimeout(() => redibujables.forEach(f => f()), 150);
+    });
+  }
 
   poblarFiltros();
   render();
 }
 
-document.addEventListener('DOMContentLoaded', iniciar);
+/* En la versión de un solo archivo la página decide cuándo arrancar cada sección. */
+if (window.UNARCHIVO) window.iniciarConectometro = iniciar;
+else document.addEventListener('DOMContentLoaded', iniciar);
 })();

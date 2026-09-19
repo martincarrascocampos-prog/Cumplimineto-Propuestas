@@ -733,11 +733,13 @@ async function iniciar() {
     filtros = { estado: '', urgencia: '', naturaleza: '', persona: '', texto: '' };
     poblarFiltros(); render();
   });
-  UI.botonTema($('#btn-tema'), render);
+  if (!window.UNARCHIVO) UI.botonTema($('#btn-tema'), render);
 
   poblarFiltros();
   render();
 }
 
-document.addEventListener('DOMContentLoaded', iniciar);
+/* En la versión de un solo archivo la página decide cuándo arrancar cada sección. */
+if (window.UNARCHIVO) window.iniciarSPT = iniciar;
+else document.addEventListener('DOMContentLoaded', iniciar);
 })();
