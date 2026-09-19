@@ -38,9 +38,18 @@ const Datos = {
      guarda en el navegador: así nadie tiene que pegar claves a mano. */
   conexionGuardada() {
     if (global.SUPABASE_URL && global.SUPABASE_ANON_KEY) {
-      return { url: global.SUPABASE_URL, clave: global.SUPABASE_ANON_KEY };
+      return { url: this.limpiarUrl(global.SUPABASE_URL), clave: String(global.SUPABASE_ANON_KEY).trim() };
     }
     return null;
+  },
+
+  /* En el panel de Supabase conviven la Project URL y el endpoint REST. El
+     cliente necesita la primera, así que le quitamos la cola si vino la otra. */
+  limpiarUrl(url) {
+    return String(url).trim()
+      .replace(/\/+$/, '')
+      .replace(/\/rest\/v1$/, '')
+      .replace(/\/auth\/v1$/, '');
   },
 
   anunciar(estado, mensaje) {
