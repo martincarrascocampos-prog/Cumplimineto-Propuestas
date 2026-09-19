@@ -1413,8 +1413,8 @@ function vistaDatos(raiz) {
     el('div', { class: 'note' }, [
       el('p', { text: Datos.modo === 'supabase'
         ? 'Conectado a la base compartida: lo que edites lo ve todo el equipo.'
-        : 'Los datos viven en este navegador. Para que el equipo vea lo mismo, conecta la base ' +
-          'compartida desde el SPT, en su pestaña Conexión.' }),
+        : 'Los datos viven en este navegador. Para que el equipo vea lo mismo hay que publicar la ' +
+          'aplicación con la conexión a Supabase configurada en el servidor (ver PUBLICAR.md).' }),
       Datos.mensaje ? el('p', { text: Datos.mensaje }) : null
     ].filter(Boolean)),
     el('div', { class: 'toolbar', style: 'margin-top:12px' },

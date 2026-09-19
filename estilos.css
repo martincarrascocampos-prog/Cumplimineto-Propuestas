@@ -81,8 +81,8 @@ textarea{resize:vertical; min-height:70px; line-height:1.45}
 
 .card{background:var(--surface); border:1px solid var(--border); border-radius:14px;
   padding:16px; box-shadow:var(--shadow); margin-bottom:16px}
-.card > h2{font-size:15px; margin-bottom:2px}
-.card > .sub{font-size:12.5px; color:var(--ink-muted); margin-bottom:14px}
+.card h2{font-size:15px; margin-bottom:2px}
+.card .sub{font-size:12.5px; color:var(--ink-muted); margin-bottom:14px}
 
 .hero{display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start}
 .hero-figure{flex:1 1 220px; min-width:220px}
@@ -260,3 +260,66 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
 .evento .cuando b{display:block; font-size:16px; color:var(--ink)}
 .evento .qué{flex:1; min-width:160px}
 .form-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px}
+
+
+/* ------------------------------------------------------------------ *
+ * SPT v2 — tarjetas compactas, rankings y calendario
+ * ------------------------------------------------------------------ */
+.card.compacta{padding:12px 14px; margin-bottom:12px; border-radius:12px}
+.card.compacta h2{font-size:13.5px}
+.card.compacta .sub{margin-bottom:10px}
+.card.compacta .toolbar{margin-bottom:8px}
+.kpis.densa{grid-template-columns:repeat(auto-fit,minmax(108px,1fr)); gap:8px}
+.kpis.densa .kpi{padding:8px 10px}
+.kpis.densa .kpi b{font-size:20px}
+.kpis.densa .kpi span{font-size:11.5px}
+table.densa th,table.densa td{padding:5px 8px; font-size:12.5px}
+.sec-titulo{display:flex; align-items:center; gap:8px; margin:18px 0 8px}
+.sec-titulo h2{font-size:14px}
+.sec-titulo .linea{flex:1; height:1px; background:var(--grid)}
+
+/* ficha de proyecto plegable y compacta */
+.proyecto{padding:10px 12px; margin-bottom:8px; border-radius:11px}
+.proyecto-head .tit{font-size:14px}
+.proyecto .meta{margin-top:6px}
+.tag{padding:1px 8px; font-size:11px}
+.tag.principal{border-color:var(--accent); color:var(--accent); font-weight:600}
+.campos{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin-top:12px}
+.campos .field span{font-size:11px}
+.campos select,.campos input{padding:5px 7px; font-size:13px}
+.bloque-t{font-size:11.5px; color:var(--ink-muted); text-transform:uppercase; letter-spacing:.04em;
+  margin:14px 0 6px; font-weight:600}
+.paso{grid-template-columns:20px 22px 1fr 132px 118px 140px 22px; gap:6px; padding:4px 0}
+.paso input,.paso select{padding:3px 6px; font-size:12.5px}
+@media (max-width:860px){ .paso{grid-template-columns:20px 22px 1fr 22px} .paso .oculta-movil{display:none} }
+
+/* ranking */
+.ranking{display:flex; flex-direction:column; gap:2px}
+.rank{display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid var(--grid)}
+.rank:last-child{border-bottom:none}
+.rank .pos{width:20px; font-size:12px; color:var(--ink-muted); font-variant-numeric:tabular-nums}
+.rank .qué{flex:1; min-width:0; font-size:13.5px}
+.rank .qué small{display:block; color:var(--ink-muted); font-size:11.5px}
+.rank .val{font-size:13px; font-weight:600; font-variant-numeric:tabular-nums}
+
+/* calendario */
+.cal-barra{display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px}
+.cal-mes{font-size:15px; font-weight:600; min-width:150px}
+.cal{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+.cal .dow{font-size:11px; color:var(--ink-muted); text-align:center; padding:2px 0; text-transform:uppercase}
+.dia{min-height:74px; border:1px solid var(--border); border-radius:9px; padding:4px 5px; background:var(--surface);
+  display:flex; flex-direction:column; gap:3px; cursor:pointer; text-align:left}
+.dia:hover{border-color:var(--axis)}
+.dia.fuera{opacity:.4}
+.dia.hoy{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset}
+.dia.elegido{background:var(--plane); border-color:var(--accent)}
+.dia .n{font-size:11.5px; color:var(--ink-muted); font-variant-numeric:tabular-nums}
+.dia .ev{font-size:10.5px; line-height:1.25; border-radius:4px; padding:1px 4px; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.ev.reunion{background:var(--track); color:var(--ink)}
+.ev.hito{background:color-mix(in srgb, var(--warning) 28%, transparent)}
+.ev.paso{background:color-mix(in srgb, var(--ramp-3) 22%, transparent)}
+.ev.vencido{background:color-mix(in srgb, var(--critical) 26%, transparent)}
+@media (max-width:640px){ .dia{min-height:54px} .dia .ev{display:none} .dia .punto{display:block} }
+.punto-dia{display:flex; gap:2px; flex-wrap:wrap}
+.punto-dia i{width:5px;height:5px;border-radius:50%;display:inline-block}

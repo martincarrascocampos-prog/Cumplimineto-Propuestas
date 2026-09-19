@@ -1,63 +1,102 @@
-/* SPT · Secretaría de Participación — proyectos, pasos, plazos y agenda.
-   Comparte la base de datos con el Conectómetro: un proyecto con origen
-   "Ejes del Programa" es una propuesta del programa vista desde el trabajo. */
+/* SPT · Secretaría de Participación.
+ *
+ * Dos orígenes de trabajo que no se mezclan:
+ *   · Programa  — las propuestas que en el Conectómetro están designadas a
+ *                 Participación. Su avance sube el cumplimiento del programa.
+ *   · Propio    — todo lo demás que hace la secretaría. No toca el programa.
+ */
 (function () {
 'use strict';
 
 const { $, el, pct, hoy, recorta, fechaCorta, horaDe } = UI;
 
 let vista = 'tablero';
-let filtros = { estado: 'Activo', urgencia: '', naturaleza: '', persona: '', texto: '' };
-let abiertos = {};   // qué proyectos están desplegados
+let filtros = { estado: 'Activo', urgencia: '', origen: '', persona: '', texto: '' };
+let abiertos = {};
+let verFormulario = false;
+let mes = new Date();
+let diaElegido = null;
 
 /* ------------------------------------------------------------------ *
- * Consultas sobre los datos
+ * 1. Los datos del SPT
  * ------------------------------------------------------------------ */
-const proyectos = () => Datos.todo('proyectos');
-const pasosDe = id => Modelo.pasosDe(id);
-const hitosDe = id => Datos.todo('hitos').filter(h => h.proyecto === id);
+const EQUIPO_PARTICIPACION = 'PART';
+
+/* La designación manda: una propuesta es de Participación sólo si así quedó
+   marcada en el Conectómetro. */
+function equipoDe(codigo, porDefecto) {
+  const s = Datos.todo('seguimiento').find(f => f.codigo === codigo);
+  return (s && s.equipo) || porDefecto;
+}
+const propuestasParticipacion = () =>
+  PROPUESTAS_BASE.filter(b => equipoDe(b[0], b[4]) === EQUIPO_PARTICIPACION);
+
+/* Un "item" es una unidad de trabajo: puede venir del programa o ser propia.
+   Los del programa existen aunque todavía nadie los haya tocado. */
+function items() {
+  const delPrograma = propuestasParticipacion().map(b => ({
+    clave: 'P:' + b[0], codigo: b[0], nombre: b[3], texto: b[5],
+    origen: 'Programa', pr: Modelo.proyectoDe(b[0])
+  }));
+  const propios = Datos.todo('proyectos')
+    .filter(p => !p.propuesta)
+    .map(p => ({ clave: p.id, codigo: null, nombre: p.nombre, texto: '', origen: 'Propio', pr: p }));
+  return [...delPrograma, ...propios];
+}
+
+/* El proyecto se crea recién cuando alguien lo trabaja. */
+function asegurar(item) {
+  if (!item.pr) item.pr = Modelo.crearProyectoDesde({ c: item.codigo, t: item.nombre });
+  return item.pr;
+}
+const campo = (item, c, porDefecto) => (item.pr && item.pr[c]) || porDefecto || '';
+const pasosDe = item => (item.pr ? Modelo.pasosDe(item.pr.id) : []);
+const hitosDe = item => (item.pr ? Datos.todo('hitos').filter(h => h.proyecto === item.pr.id) : []);
+const enlacesDe = item => (item.pr ? Datos.todo('enlaces').filter(e => e.proyecto === item.pr.id) : []);
+const designados = item => (item.pr && item.pr.designados) || [];
+const principal = item => designados(item)[0] || '';
+
+function avanceDe(item) {
+  const ps = pasosDe(item).filter(p => p.estado !== 'No aplica');
+  if (!ps.length) return 0;
+  return Math.round(ps.filter(p => p.estado === 'Completado').length / ps.length * 100);
+}
+const atrasadosDe = item =>
+  pasosDe(item).filter(p => p.plazo && p.estado === 'Pendiente' && p.plazo < hoy()).length;
+
 const integrantes = () => Datos.todo('integrantes');
 const nombres = () => integrantes().map(i => i.nombre).filter(Boolean);
 
-const avanceDe = id => {
-  const p = pasosDe(id);
-  const utiles = p.filter(x => x.estado !== 'No aplica');
-  if (!utiles.length) return 0;
-  return Math.round(utiles.filter(x => x.estado === 'Completado').length / utiles.length * 100);
-};
-
-const propuestaDe = pr => {
-  if (!pr.propuesta) return null;
-  const b = PROPUESTAS_BASE.find(x => x[0] === pr.propuesta);
-  return b ? { c: b[0], eje: b[1], sub: b[2], t: b[3], d: b[5] } : null;
-};
-
-const vencidos = id => pasosDe(id).filter(p => p.plazo && p.estado === 'Pendiente' && p.plazo < hoy()).length;
-
 function filtrados() {
   const t = filtros.texto.trim().toLowerCase();
-  return proyectos().filter(pr => {
-    if (filtros.estado && (pr.estado || 'Activo') !== filtros.estado) return false;
-    if (filtros.urgencia && pr.urgencia !== filtros.urgencia) return false;
-    if (filtros.naturaleza && pr.naturaleza !== filtros.naturaleza) return false;
+  return items().filter(it => {
+    if (filtros.estado && campo(it, 'estado', 'Activo') !== filtros.estado) return false;
+    if (filtros.urgencia && campo(it, 'urgencia') !== filtros.urgencia) return false;
+    if (filtros.origen && it.origen !== filtros.origen) return false;
     if (filtros.persona) {
-      const enProyecto = (pr.designados || []).includes(filtros.persona);
-      const enPasos = pasosDe(pr.id).some(p => (p.encargados || []).includes(filtros.persona));
+      const enProyecto = designados(it).includes(filtros.persona);
+      const enPasos = pasosDe(it).some(p => (p.encargados || []).includes(filtros.persona));
       if (!enProyecto && !enPasos) return false;
     }
-    if (t) {
-      const texto = (pr.nombre + ' ' + pasosDe(pr.id).map(p => p.descripcion).join(' ')).toLowerCase();
-      if (!texto.includes(t)) return false;
-    }
+    if (t && !(it.nombre + ' ' + pasosDe(it).map(p => p.descripcion).join(' ')).toLowerCase().includes(t))
+      return false;
     return true;
   }).sort((a, b) =>
-    (SPT.pesoUrgencia[b.urgencia] || 0) - (SPT.pesoUrgencia[a.urgencia] || 0) ||
+    (SPT.pesoUrgencia[campo(b, 'urgencia')] || 0) - (SPT.pesoUrgencia[campo(a, 'urgencia')] || 0) ||
+    atrasadosDe(b) - atrasadosDe(a) ||
     String(a.nombre).localeCompare(String(b.nombre)));
 }
 
 /* ------------------------------------------------------------------ *
- * Piezas de interfaz
+ * 2. Piezas sueltas
  * ------------------------------------------------------------------ */
+const COLOR_URGENCIA = {
+  'Urgente (ver cuánto antes)': 'var(--critical)',
+  'Prioritario': 'var(--warning)',
+  'Estándar': 'var(--ramp-3)',
+  'Diferible': 'var(--ink-muted)'
+};
+const claseUrgencia = u => u && u.startsWith('Urgente') ? 'urgente' : u === 'Prioritario' ? 'prioritario' : '';
 const tag = (txt, clase) => txt ? el('span', { class: 'tag ' + (clase || ''), text: txt }) : null;
 
 function selector(opciones, valor, alCambiar, vacio) {
@@ -69,275 +108,436 @@ function selector(opciones, valor, alCambiar, vacio) {
   return s;
 }
 
-function barra(valor) {
-  const n = valor >= 90 ? 'var(--ramp-5)' : valor >= 80 ? 'var(--ramp-4)'
+function barraMini(valor, ancho) {
+  const c = valor >= 90 ? 'var(--ramp-5)' : valor >= 80 ? 'var(--ramp-4)'
     : valor >= 70 ? 'var(--ramp-3)' : valor >= 50 ? 'var(--ramp-2)' : 'var(--ramp-1)';
-  return el('span', { class: 'bar-mini', style: 'max-width:180px' },
-    el('i', { style: `width:${valor}%; background:${n}` }));
+  return el('span', { class: 'bar-mini', style: `max-width:${ancho || 150}px` },
+    el('i', { style: `width:${valor}%; background:${c}` }));
+}
+
+const seccion = titulo => el('div', { class: 'sec-titulo' }, [
+  el('h2', { text: titulo }), el('span', { class: 'linea' })
+]);
+
+function tablaDensa(cabeceras, filas) {
+  const t = el('table', { class: 'densa' });
+  t.appendChild(el('thead', {}, el('tr', {}, cabeceras.map(c => el('th', { text: c })))));
+  const tb = el('tbody');
+  filas.forEach(f => tb.appendChild(el('tr', {}, f.map(c =>
+    c && c.nodeType ? el('td', {}, c) : el('td', { text: c === null || c === undefined ? '—' : String(c) })))));
+  t.appendChild(tb);
+  return el('div', { class: 'tablewrap' }, t);
 }
 
 /* ------------------------------------------------------------------ *
- * Vista: Tablero
+ * 3. Vista: Tablero  (el cuadro de mando)
  * ------------------------------------------------------------------ */
-function vistaTablero(raiz) {
-  const lista = filtrados();
-  const activos = proyectos().filter(p => (p.estado || 'Activo') === 'Activo');
-  const todosPasos = Datos.todo('pasos');
-  const pendientes = todosPasos.filter(p => p.estado === 'Pendiente');
-  const atrasados = pendientes.filter(p => p.plazo && p.plazo < hoy());
-  const avanceMedio = activos.length
-    ? Math.round(activos.reduce((a, p) => a + avanceDe(p.id), 0) / activos.length) : 0;
+function cumplimientoDe(lista) {
+  if (!lista.length) return 0;
+  return Math.round(lista.reduce((a, it) => a + avanceDe(it), 0) / lista.length);
+}
 
-  const kpis = el('div', { class: 'kpis' });
-  [['Proyectos activos', String(activos.length)], ['Avance promedio', pct(avanceMedio)],
-   ['Pasos pendientes', String(pendientes.length)], ['Pasos atrasados', String(atrasados.length)]]
+function vistaTablero(raiz) {
+  const todos = items();
+  const activos = todos.filter(it => campo(it, 'estado', 'Activo') === 'Activo');
+  const lista = filtrados();
+  const pasos = activos.flatMap(pasosDe);
+  const pendientes = pasos.filter(p => p.estado === 'Pendiente');
+  const atrasados = pendientes.filter(p => p.plazo && p.plazo < hoy());
+  const delPrograma = activos.filter(it => it.origen === 'Programa');
+
+  const kpis = el('div', { class: 'kpis densa' });
+  [['Proyectos activos', String(activos.length)],
+   ['Cumplimiento global', pct(cumplimientoDe(activos))],
+   ['Del programa', `${delPrograma.length}`],
+   ['Pasos pendientes', String(pendientes.length)],
+   ['Pasos atrasados', String(atrasados.length)],
+   ['Integrantes', String(nombres().length)]]
     .forEach(([t, v]) => kpis.appendChild(el('div', { class: 'kpi' }, [
       el('b', { text: v }), el('span', { text: t })])));
 
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Tablero de la secretaría' }),
-    el('div', { class: 'sub', text: 'El trabajo de la semana, ordenado por urgencia' }),
+  raiz.appendChild(el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Cuadro de mando' }),
+    el('div', { class: 'sub', text: 'Plan de trabajo de la Secretaría de Participación' }),
     kpis
   ]));
 
-  if (!proyectos().length) {
-    raiz.appendChild(el('div', { class: 'card' }, [
-      el('h2', { text: 'Todavía no hay proyectos' }),
-      el('div', { class: 'sub', text: 'Así se parte' }),
-      el('div', { class: 'note' }, [
-        el('p', { text: 'Un proyecto puede nacer de dos lados: de una propuesta del programa ' +
-          '(y entonces su avance sube solo en el Conectómetro), o del trabajo propio de la secretaría.' }),
-        el('p', { text: 'Cada proyecto se divide en pasos, y cada paso tiene plazo, estado y encargados.' })
-      ]),
-      el('div', { class: 'toolbar', style: 'margin-top:12px' }, [
-        el('button', { class: 'btn btn-primary', type: 'button', text: 'Crear el primer proyecto',
-          onclick: () => { vista = 'proyectos'; marcarTab(); render(); } })
-      ])
-    ]));
-    return;
-  }
+  /* Indicadores de cumplimiento, como en la planilla */
+  const grupos = [
+    ['Global', activos],
+    ['Origen · Programa', activos.filter(it => it.origen === 'Programa')],
+    ['Origen · Propio', activos.filter(it => it.origen === 'Propio')],
+    ...SPT.listas.clasificacion.map(c => [`Clasificación · ${c}`, activos.filter(it => campo(it, 'clasificacion') === c)]),
+    ...SPT.listas.plazo.map(p => [`Plazo · ${p.replace(' plazo', '')}`, activos.filter(it => campo(it, 'plazo_tipo') === p)])
+  ].filter(([, l]) => l.length);
+  const hayTrabajo = activos.some(it => pasosDe(it).length);
 
-  /* Lo que vence pronto */
-  const proximos = Datos.todo('pasos')
-    .filter(p => p.estado === 'Pendiente' && p.plazo)
-    .sort((a, b) => a.plazo.localeCompare(b.plazo))
-    .slice(0, 12);
-  const card = el('div', { class: 'card' }, [
-    el('h2', { text: 'Próximos vencimientos' }),
-    el('div', { class: 'sub', text: 'Pasos pendientes con fecha, del más próximo al más lejano' })
+  if (hayTrabajo) raiz.appendChild(Graficos.tarjeta('Indicadores de cumplimiento',
+    'Avance promedio de los proyectos activos, por corte',
+    ancho => Graficos.barras(grupos.map(([etiqueta, l]) => ({
+      etiqueta, valor: cumplimientoDe(l),
+      detalle: [['Cumplimiento', pct(cumplimientoDe(l))], ['Proyectos', String(l.length)]]
+    })), ancho, { max: 100, umbrales: [50, 70, 80, 90], titulo: 'Cumplimiento por corte' }),
+    () => tablaDensa(['Corte', 'Cumplimiento', 'Proyectos'],
+      grupos.map(([n, l]) => [n, pct(cumplimientoDe(l)), l.length]))));
+
+  if (!hayTrabajo) raiz.appendChild(el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Así se parte' }),
+    el('div', { class: 'note' }, [
+      el('p', { text: 'Arriba están las propuestas que en el Conectómetro quedaron designadas a ' +
+        'Participación: ya son proyectos, no hay que crearlas.' }),
+      el('p', { text: 'Abre una en Proyectos, designa a quién la lleva —el primero es el encargado ' +
+        'principal—, agrégale pasos con plazo y, si corresponde, hitos y la carpeta de Drive. ' +
+        'Desde ahí se llenan solos el tablero, los rankings y el calendario.' })
+    ])
+  ]));
+
+  /* Atención inmediata */
+  const urgentes = lista.filter(it => (campo(it, 'urgencia') || '').startsWith('Urgente') || atrasadosDe(it))
+    .slice(0, 10);
+  const card = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Atención inmediata' }),
+    el('div', { class: 'sub', text: 'Proyectos urgentes o con pasos atrasados' })
   ]);
-  if (!proximos.length) card.appendChild(el('div', { class: 'empty', text: 'Ningún paso tiene plazo todavía.' }));
-  else {
-    const t = el('table');
-    t.appendChild(el('thead', {}, el('tr', {}, [
-      el('th', { text: 'Plazo' }), el('th', { text: 'Paso' }), el('th', { text: 'Proyecto' }),
-      el('th', { text: 'Encargados' })
-    ])));
-    const tb = el('tbody');
-    proximos.forEach(p => {
-      const pr = proyectos().find(x => x.id === p.proyecto);
-      tb.appendChild(el('tr', {}, [
-        el('td', { class: p.plazo < hoy() ? 'vencido' : '',
-          style: p.plazo < hoy() ? 'color:var(--critical)' : '', text: fechaCorta(p.plazo) }),
-        el('td', { text: p.descripcion }),
-        el('td', { text: pr ? recorta(pr.nombre, 40) : '—' }),
-        el('td', { text: (p.encargados || []).join(', ') || '—' })
-      ]));
-    });
-    t.appendChild(tb);
-    card.appendChild(el('div', { class: 'tablewrap' }, t));
-  }
+  card.appendChild(urgentes.length
+    ? tablaDensa(['Proyecto', 'Principal', 'Urgencia', 'Atrasos', 'Avance'],
+        urgentes.map(it => [
+          el('button', { class: 'linktitle', type: 'button', text: recorta(it.nombre, 44),
+            onclick: () => { vista = 'proyectos'; abiertos[it.clave] = true; marcarTab(); render(); } }),
+          principal(it) || '—',
+          el('span', { class: 'tag ' + claseUrgencia(campo(it, 'urgencia')), text: campo(it, 'urgencia') || '—' }),
+          atrasadosDe(it) || '—', pct(avanceDe(it))
+        ]))
+    : el('div', { class: 'empty', text: 'Nada urgente con el filtro actual.' }));
   raiz.appendChild(card);
 
-  /* Avance por proyecto */
-  const card2 = el('div', { class: 'card' }, [
-    el('h2', { text: 'Avance por proyecto' }),
-    el('div', { class: 'sub', text: `${lista.length} proyectos con el filtro actual` })
+  /* Próximos pasos por plazo */
+  const proximos = activos.flatMap(it => pasosDe(it)
+    .filter(p => p.estado === 'Pendiente' && p.plazo)
+    .map(p => ({ it, p })))
+    .sort((a, b) => a.p.plazo.localeCompare(b.p.plazo))
+    .slice(0, 12);
+  const card2 = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Próximos pasos por plazo' }),
+    el('div', { class: 'sub', text: 'Sólo lo pendiente, del más próximo al más lejano' })
   ]);
-  lista.forEach(pr => {
-    const a = avanceDe(pr.id);
-    const v = vencidos(pr.id);
-    card2.appendChild(el('div', { class: 'nodo' }, el('div', { class: 'nodo-head' }, [
-      el('button', { class: 'linktitle tit', type: 'button', text: pr.nombre,
-        onclick: () => { vista = 'proyectos'; abiertos[pr.id] = true; marcarTab(); render(); } }),
-      pr.urgencia ? tag(pr.urgencia, pr.urgencia.startsWith('Urgente') ? 'urgente'
-        : pr.urgencia === 'Prioritario' ? 'prioritario' : '') : null,
-      barra(a),
-      el('span', { style: 'font-size:12.5px;color:var(--ink-muted)', text:
-        `${pct(a)} · ${pasosDe(pr.id).filter(x => x.estado === 'Completado').length}/${pasosDe(pr.id).length} pasos` +
-        (v ? ` · ${v} atrasado${v > 1 ? 's' : ''}` : '') })
-    ])));
-  });
+  card2.appendChild(proximos.length
+    ? tablaDensa(['Plazo', 'Paso', 'Proyecto', 'Encargados'],
+        proximos.map(({ it, p }) => [
+          el('span', { style: p.plazo < hoy() ? 'color:var(--critical)' : '', text: fechaCorta(p.plazo) }),
+          recorta(p.descripcion, 40), recorta(it.nombre, 32),
+          (p.encargados || []).join(', ') || '—'
+        ]))
+    : el('div', { class: 'empty', text: 'Ningún paso tiene plazo todavía.' }));
   raiz.appendChild(card2);
+
+  const terminados = todos.filter(it => campo(it, 'estado') === 'Terminado');
+  if (terminados.length) raiz.appendChild(el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Proyectos terminados' }),
+    el('div', { class: 'sub', text: `${terminados.length} cerrados` }),
+    tablaDensa(['Proyecto', 'Origen', 'Designados', 'Avance'],
+      terminados.map(it => [it.nombre, it.origen, designados(it).join(', ') || '—', pct(avanceDe(it))]))
+  ]));
 }
 
 /* ------------------------------------------------------------------ *
- * Vista: Proyectos
+ * 4. Vista: Panel  (rankings y gráficos)
+ * ------------------------------------------------------------------ */
+function vistaPanel(raiz) {
+  const lista = filtrados();
+  const activos = lista.filter(it => campo(it, 'estado', 'Activo') === 'Activo');
+
+  /* --- ranking de carga por persona --- */
+  const carga = nombres().map(n => {
+    const proyectos = activos.filter(it => designados(it).includes(n));
+    const pasos = activos.flatMap(pasosDe).filter(p => (p.encargados || []).includes(n));
+    const pendientes = pasos.filter(p => p.estado === 'Pendiente');
+    const atrasados = pendientes.filter(p => p.plazo && p.plazo < hoy());
+    const principales = activos.filter(it => principal(it) === n);
+    return { nombre: n, proyectos: proyectos.length, principales: principales.length,
+      pasos: pasos.length, pendientes: pendientes.length, atrasados: atrasados.length };
+  }).sort((a, b) => b.pendientes - a.pendientes || b.proyectos - a.proyectos);
+
+  const sinCarga = carga.every(c => !c.pendientes && !c.proyectos);
+  if (!carga.length || sinCarga) {
+    raiz.appendChild(el('div', { class: 'card compacta' }, [
+      el('h2', { text: carga.length ? 'Todavía no hay trabajo repartido' : 'Sin integrantes todavía' }),
+      el('div', { class: 'note', text: carga.length
+        ? 'Designa personas en los proyectos y agrega pasos: el ranking de carga se arma solo.'
+        : 'Agrega al equipo en la pestaña Equipo y los rankings se llenan solos.' })
+    ]));
+  } else {
+    raiz.appendChild(Graficos.tarjeta('Ranking de actividades designadas',
+      'Pasos pendientes por persona, en los proyectos activos',
+      ancho => [
+        Graficos.barras(carga.map(c => ({
+          etiqueta: c.nombre, valor: c.pendientes, texto: String(c.pendientes),
+          detalle: [['Pasos pendientes', String(c.pendientes)], ['Atrasados', String(c.atrasados)],
+                    ['Proyectos designados', String(c.proyectos)], ['Como principal', String(c.principales)]]
+        })), ancho, { sufijo: '', titulo: 'Carga por persona' }),
+        listaRanking(carga.map((c, i) => ({
+          pos: i + 1, titulo: c.nombre,
+          sub: `${c.proyectos} proyectos · ${c.principales} como principal` +
+               (c.atrasados ? ` · ${c.atrasados} atrasados` : ''),
+          valor: c.pendientes + ' pend.'
+        })))
+      ],
+      () => tablaDensa(['Persona', 'Pendientes', 'Atrasados', 'Proyectos', 'Principal en'],
+        carga.map(c => [c.nombre, c.pendientes, c.atrasados, c.proyectos, c.principales]))));
+  }
+
+  /* --- urgencias primordiales --- */
+  const puntaje = it => (SPT.pesoUrgencia[campo(it, 'urgencia')] || 0) * 10
+    + atrasadosDe(it) * 6
+    + (campo(it, 'plazo_final') && campo(it, 'plazo_final') < hoy() ? 8 : 0)
+    - Math.round(avanceDe(it) / 20);
+  const prioridad = activos.slice().sort((a, b) => puntaje(b) - puntaje(a)).slice(0, 6);
+
+  raiz.appendChild(el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Urgencias primordiales' }),
+    el('div', { class: 'sub', text: 'Orden por urgencia, atrasos y plazo vencido, descontando lo ya avanzado' }),
+    prioridad.length
+      ? listaRanking(prioridad.map((it, i) => ({
+          pos: i + 1, titulo: it.nombre,
+          sub: `${campo(it, 'urgencia') || 'sin urgencia'} · ${principal(it) || 'sin encargado principal'}` +
+               (atrasadosDe(it) ? ` · ${atrasadosDe(it)} atrasados` : ''),
+          valor: pct(avanceDe(it)),
+          onclick: () => { vista = 'proyectos'; abiertos[it.clave] = true; marcarTab(); render(); }
+        })))
+      : el('div', { class: 'empty', text: 'Sin proyectos activos.' })
+  ]));
+
+  /* --- reparto por urgencia --- */
+  const porUrgencia = SPT.listas.urgencia.map(u => ({
+    etiqueta: u, valor: activos.filter(it => campo(it, 'urgencia') === u).length,
+    color: COLOR_URGENCIA[u], tinta: u === 'Prioritario' ? '#0b0b0b' : '#fff'
+  }));
+  const sinUrgencia = activos.filter(it => !campo(it, 'urgencia')).length;
+  if (sinUrgencia) porUrgencia.push({ etiqueta: 'Sin definir', valor: sinUrgencia,
+    color: 'var(--track)', tinta: 'var(--ink)' });
+
+  raiz.appendChild(Graficos.tarjeta('Reparto por urgencia',
+    'Cuántos proyectos activos hay en cada nivel',
+    ancho => [Graficos.apilada(porUrgencia, ancho),
+      Graficos.leyenda(porUrgencia.filter(s => s.valor).map(s =>
+        ({ etiqueta: `${s.etiqueta} (${s.valor})`, color: s.color })))],
+    () => tablaDensa(['Urgencia', 'Proyectos'], porUrgencia.map(s => [s.etiqueta, s.valor]))));
+
+  /* --- avance por proyecto: sólo los que ya tienen pasos, para no llenar la
+     pantalla de barras en cero --- */
+  const conTrabajo = activos.filter(it => pasosDe(it).length)
+    .sort((a, b) => avanceDe(b) - avanceDe(a));
+  if (conTrabajo.length) raiz.appendChild(Graficos.tarjeta('Avance por proyecto',
+    `${Math.min(conTrabajo.length, 10)} de ${activos.length} proyectos, los que ya tienen pasos`,
+    ancho => Graficos.barras(conTrabajo.slice(0, 10).map(it => ({
+      etiqueta: it.nombre, valor: avanceDe(it),
+      color: COLOR_URGENCIA[campo(it, 'urgencia')] || 'var(--ramp-3)',
+      detalle: [['Avance', pct(avanceDe(it))], ['Origen', it.origen],
+                ['Principal', principal(it) || '—'], ['Pasos', String(pasosDe(it).length)]]
+    })), ancho, { max: 100, umbrales: [50, 70, 80, 90] }),
+    () => tablaDensa(['Proyecto', 'Origen', 'Principal', 'Pasos', 'Avance'],
+      conTrabajo.map(it => [it.nombre, it.origen, principal(it) || '—',
+        pasosDe(it).length, pct(avanceDe(it))]))));
+
+  /* --- pasos por estado --- */
+  const pasos = activos.flatMap(pasosDe);
+  if (pasos.length) {
+    const segmentos = [
+      { etiqueta: 'Completados', valor: pasos.filter(p => p.estado === 'Completado').length, color: 'var(--good)' },
+      { etiqueta: 'Pendientes', valor: pasos.filter(p => p.estado === 'Pendiente' && !(p.plazo && p.plazo < hoy())).length,
+        color: 'var(--ramp-3)' },
+      { etiqueta: 'Atrasados', valor: pasos.filter(p => p.estado === 'Pendiente' && p.plazo && p.plazo < hoy()).length,
+        color: 'var(--critical)' },
+      { etiqueta: 'No aplica', valor: pasos.filter(p => p.estado === 'No aplica').length,
+        color: 'var(--ink-muted)' }
+    ];
+    raiz.appendChild(Graficos.tarjeta('Pasos por estado', `${pasos.length} pasos en total`,
+      ancho => [Graficos.apilada(segmentos, ancho),
+        Graficos.leyenda(segmentos.filter(s => s.valor).map(s =>
+          ({ etiqueta: `${s.etiqueta} (${s.valor})`, color: s.color })))],
+      () => tablaDensa(['Estado', 'Pasos'], segmentos.map(s => [s.etiqueta, s.valor]))));
+  }
+}
+
+function listaRanking(filas) {
+  return el('div', { class: 'ranking' }, filas.map(f => {
+    const qué = el('div', { class: 'qué' }, [
+      f.onclick
+        ? el('button', { class: 'linktitle', type: 'button', text: f.titulo, onclick: f.onclick })
+        : document.createTextNode(f.titulo),
+      el('small', { text: f.sub })
+    ]);
+    return el('div', { class: 'rank' }, [
+      el('span', { class: 'pos', text: String(f.pos) }), qué,
+      el('span', { class: 'val', text: f.valor })
+    ]);
+  }));
+}
+
+/* ------------------------------------------------------------------ *
+ * 5. Vista: Proyectos
  * ------------------------------------------------------------------ */
 function vistaProyectos(raiz) {
-  raiz.appendChild(formularioNuevo());
   const lista = filtrados();
+
+  const barra = el('div', { class: 'toolbar' }, [
+    el('div', {}, [
+      el('h2', { text: 'Proyectos' }),
+      el('div', { class: 'sub', text:
+        'Los del programa son las propuestas designadas a Participación; los propios los creas tú.' })
+    ]),
+    el('span', { class: 'count', text: `${lista.length} de ${items().length}` }),
+    el('button', { class: 'btn btn-sm' + (verFormulario ? '' : ' btn-primary'), type: 'button',
+      text: verFormulario ? 'Cerrar' : '+ Proyecto propio',
+      onclick: () => { verFormulario = !verFormulario; render(); } })
+  ]);
+  const card = el('div', { class: 'card compacta' }, barra);
+  if (verFormulario) card.appendChild(formularioNuevo());
+  raiz.appendChild(card);
+
   if (!lista.length) {
-    raiz.appendChild(el('div', { class: 'card' },
+    raiz.appendChild(el('div', { class: 'card compacta' },
       el('div', { class: 'empty', text: 'Ningún proyecto coincide con el filtro.' })));
     return;
   }
-  const cont = el('div', {});
-  lista.forEach(pr => cont.appendChild(tarjetaProyecto(pr)));
-  raiz.appendChild(cont);
+
+  const delPrograma = lista.filter(it => it.origen === 'Programa');
+  const propios = lista.filter(it => it.origen === 'Propio');
+  if (delPrograma.length) {
+    raiz.appendChild(seccion(`Del programa · ${delPrograma.length}`));
+    delPrograma.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
+  }
+  if (propios.length) {
+    raiz.appendChild(seccion(`Trabajo propio · ${propios.length}`));
+    propios.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
+  }
 }
 
 function formularioNuevo() {
-  const card = el('div', { class: 'card' }, [
-    el('h2', { text: 'Nuevo proyecto' }),
-    el('div', { class: 'sub', text: 'Desde una propuesta del programa, o del trabajo propio de la secretaría' })
-  ]);
-
-  const yaLigadas = new Set(proyectos().map(p => p.propuesta).filter(Boolean));
-  const disponibles = PROPUESTAS_BASE.filter(b => !yaLigadas.has(b[0]));
-
-  const selProp = el('select', {});
-  selProp.appendChild(el('option', { value: '', text: '— trabajo propio de la secretaría —' }));
-  disponibles.forEach(b => selProp.appendChild(el('option', { value: b[0], text: `${b[0]}  ${recorta(b[3], 58)}` })));
-
   const inNombre = el('input', { type: 'text', placeholder: 'Nombre del proyecto' });
-  selProp.addEventListener('change', () => {
-    const b = PROPUESTAS_BASE.find(x => x[0] === selProp.value);
-    if (b) inNombre.value = b[3];
-  });
-
   const selClas = selector(SPT.listas.clasificacion, 'Interno', () => {}, null);
   const selPlazo = selector(SPT.listas.plazo, '', () => {});
   const selUrg = selector(SPT.listas.urgencia, 'Estándar', () => {}, null);
-
-  card.appendChild(el('div', { class: 'form-grid' }, [
-    el('label', { class: 'field' }, [el('span', { text: 'Propuesta del programa' }), selProp]),
+  const caja = el('div', {});
+  caja.appendChild(el('div', { class: 'campos' }, [
     el('label', { class: 'field' }, [el('span', { text: 'Nombre' }), inNombre]),
     el('label', { class: 'field' }, [el('span', { text: 'Clasificación' }), selClas]),
-    el('label', { class: 'field' }, [el('span', { text: 'Priorización en el tiempo' }), selPlazo]),
+    el('label', { class: 'field' }, [el('span', { text: 'Plazo' }), selPlazo]),
     el('label', { class: 'field' }, [el('span', { text: 'Urgencia' }), selUrg])
   ]));
-
-  card.appendChild(el('div', { class: 'toolbar', style: 'margin:12px 0 0' }, [
-    el('button', { class: 'btn btn-primary', type: 'button', text: 'Crear proyecto', onclick: () => {
+  caja.appendChild(el('div', { class: 'toolbar', style: 'margin:10px 0 0' }, [
+    el('button', { class: 'btn btn-primary btn-sm', type: 'button', text: 'Crear', onclick: () => {
       const nombre = inNombre.value.trim();
       if (!nombre) { inNombre.focus(); return; }
-      const b = PROPUESTAS_BASE.find(x => x[0] === selProp.value);
       const pr = Datos.guardar('proyectos', {
-        id: uid(), nombre,
-        propuesta: b ? b[0] : null,
-        estado: 'Activo',
-        clasificacion: selClas.value,
-        naturaleza: b ? 'Programático' : 'No Programático',
-        origen: b ? Modelo.ORIGEN_PROGRAMA : 'N/A',
-        plazo_tipo: selPlazo.value,
-        urgencia: selUrg.value,
-        designados: [],
-        plazo_final: '',
-        creado: new Date().toISOString()
+        id: uid(), nombre, propuesta: null, estado: 'Activo',
+        clasificacion: selClas.value, naturaleza: 'No Programático', origen: 'N/A',
+        plazo_tipo: selPlazo.value, urgencia: selUrg.value, designados: [],
+        plazo_final: '', creado: new Date().toISOString()
       });
       abiertos[pr.id] = true;
-      inNombre.value = ''; selProp.value = '';
+      verFormulario = false;
       render();
     } }),
-    el('span', { class: 'count', text: `${disponibles.length} propuestas del programa sin proyecto` })
+    el('span', { class: 'count', style: 'font-size:12px',
+      text: 'El trabajo propio no afecta el cumplimiento del programa.' })
   ]));
-  return card;
+  return caja;
 }
 
-function tarjetaProyecto(pr) {
+function tarjetaProyecto(it) {
   const card = el('div', { class: 'proyecto' });
-  const prop = propuestaDe(pr);
-  const a = avanceDe(pr.id);
-  const abierto = !!abiertos[pr.id];
+  const abierto = !!abiertos[it.clave];
+  const a = avanceDe(it);
+  const atrasos = atrasadosDe(it);
 
-  const cabeza = el('div', { class: 'proyecto-head' }, [
-    el('button', { class: 'linktitle tit', type: 'button', text: pr.nombre,
-      onclick: () => { abiertos[pr.id] = !abierto; render(); } }),
-    barra(a),
-    el('span', { style: 'font-size:12.5px;color:var(--ink-muted)', text:
-      `${pct(a)} · ${pasosDe(pr.id).length} pasos` })
-  ]);
-  card.appendChild(cabeza);
+  const marca = el('span', { style: 'font-size:12px;color:var(--ink-muted)' });
+  const barra = barraMini(a, 140);
+  const refrescarCabeza = () => {
+    const v = avanceDe(it);
+    barra.firstChild.style.width = v + '%';
+    marca.textContent = `${pct(v)} · ${pasosDe(it).length} pasos` +
+      (atrasadosDe(it) ? ` · ${atrasadosDe(it)} atrasados` : '');
+  };
 
-  const meta = el('div', { class: 'meta' }, [
-    prop ? tag(`Programa ${prop.c}`, 'programa') : tag('Trabajo propio'),
-    tag(pr.clasificacion), tag(pr.naturaleza),
-    tag(pr.plazo_tipo),
-    pr.urgencia ? tag(pr.urgencia, pr.urgencia.startsWith('Urgente') ? 'urgente'
-      : pr.urgencia === 'Prioritario' ? 'prioritario' : '') : null,
-    (pr.designados || []).length ? tag('👥 ' + pr.designados.join(', ')) : null,
-    (pr.estado === 'Terminado') ? tag('Terminado') : null
-  ]);
-  card.appendChild(meta);
+  card.appendChild(el('div', { class: 'proyecto-head' }, [
+    el('button', { class: 'linktitle tit', type: 'button', text: it.nombre,
+      onclick: () => { abiertos[it.clave] = !abierto; render(); } }),
+    barra, marca
+  ]));
+  marca.textContent = `${pct(a)} · ${pasosDe(it).length} pasos` + (atrasos ? ` · ${atrasos} atrasados` : '');
+
+  card.appendChild(el('div', { class: 'meta' }, [
+    it.codigo ? tag('Programa ' + it.codigo, 'programa') : tag('Propio'),
+    principal(it) ? tag('★ ' + principal(it), 'principal') : null,
+    tag(campo(it, 'urgencia'), claseUrgencia(campo(it, 'urgencia'))),
+    tag(campo(it, 'clasificacion')),
+    tag(campo(it, 'plazo_tipo')),
+    campo(it, 'estado') === 'Terminado' ? tag('Terminado') : null,
+    hitosDe(it).length ? tag(`${hitosDe(it).length} hitos`) : null
+  ].filter(Boolean)));
 
   if (!abierto) return card;
 
-  /* --- edición del proyecto --- */
-  const guardaCampo = (campo, valor) => { pr[campo] = valor; Datos.guardar('proyectos', pr); };
-  card.appendChild(el('div', { class: 'form-grid', style: 'margin-top:14px' }, [
+  const pr = asegurar(it);
+  const guarda = (c, v) => { pr[c] = v; Datos.guardar('proyectos', pr); };
+
+  card.appendChild(el('div', { class: 'campos' }, [
     el('label', { class: 'field' }, [el('span', { text: 'Estado' }),
-      selector(SPT.listas.estadoProyecto, pr.estado || 'Activo', v => { guardaCampo('estado', v); render(); }, null)]),
+      selector(SPT.listas.estadoProyecto, pr.estado || 'Activo', v => { guarda('estado', v); render(); }, null)]),
     el('label', { class: 'field' }, [el('span', { text: 'Clasificación' }),
-      selector(SPT.listas.clasificacion, pr.clasificacion, v => guardaCampo('clasificacion', v))]),
-    el('label', { class: 'field' }, [el('span', { text: 'Naturaleza' }),
-      selector(SPT.listas.naturaleza, pr.naturaleza, v => guardaCampo('naturaleza', v))]),
-    el('label', { class: 'field' }, [el('span', { text: 'Origen' }),
-      selector(SPT.listas.origen, pr.origen, v => guardaCampo('origen', v))]),
-    el('label', { class: 'field' }, [el('span', { text: 'Priorización en el tiempo' }),
-      selector(SPT.listas.plazo, pr.plazo_tipo, v => { guardaCampo('plazo_tipo', v); })]),
+      selector(SPT.listas.clasificacion, pr.clasificacion, v => guarda('clasificacion', v))]),
+    el('label', { class: 'field' }, [el('span', { text: 'Plazo' }),
+      selector(SPT.listas.plazo, pr.plazo_tipo, v => guarda('plazo_tipo', v))]),
     el('label', { class: 'field' }, [el('span', { text: 'Urgencia' }),
-      selector(SPT.listas.urgencia, pr.urgencia, v => { guardaCampo('urgencia', v); render(); })]),
-    el('label', { class: 'field' }, [el('span', { text: 'Plazo final' }),
-      (() => {
-        const f = el('input', { type: 'date', value: pr.plazo_final || '' });
-        f.addEventListener('change', () => guardaCampo('plazo_final', f.value));
-        return f;
-      })()])
+      selector(SPT.listas.urgencia, pr.urgencia, v => { guarda('urgencia', v); render(); })]),
+    el('label', { class: 'field' }, [el('span', { text: 'Plazo final' }), (() => {
+      const f = el('input', { type: 'date', value: pr.plazo_final || '' });
+      f.addEventListener('change', () => guarda('plazo_final', f.value));
+      return f;
+    })()])
   ]));
 
-  /* designados */
-  const cajaPersonas = el('div', { class: 'meta', style: 'margin-top:10px' });
-  const pintarPersonas = () => {
-    cajaPersonas.innerHTML = '';
+  /* --- equipo del proyecto: el primero es el principal --- */
+  card.appendChild(el('div', { class: 'bloque-t', text: 'Equipo · el primero es el encargado principal' }));
+  const cajaGente = el('div', { class: 'meta' });
+  const pintarGente = () => {
+    cajaGente.innerHTML = '';
     if (!nombres().length) {
-      cajaPersonas.appendChild(el('span', { style: 'font-size:12.5px;color:var(--ink-muted)',
-        text: 'Agrega integrantes en la pestaña Equipo para poder designar.' }));
+      cajaGente.appendChild(el('span', { style: 'font-size:12.5px;color:var(--ink-muted)',
+        text: 'Agrega integrantes en la pestaña Equipo.' }));
       return;
     }
-    nombres().forEach(n => {
-      const activo = (pr.designados || []).includes(n);
-      cajaPersonas.appendChild(el('button', {
-        class: 'tag' + (activo ? ' programa' : ''), type: 'button', text: (activo ? '✓ ' : '+ ') + n,
-        onclick: () => {
-          const d = new Set(pr.designados || []);
-          activo ? d.delete(n) : d.add(n);
-          pr.designados = [...d];
-          Datos.guardar('proyectos', pr);
-          pintarPersonas();
-        } }));
+    (pr.designados || []).forEach((n, i) => {
+      cajaGente.appendChild(el('span', { class: 'tag ' + (i === 0 ? 'principal' : '') }, [
+        document.createTextNode((i === 0 ? '★ ' : '') + n),
+        i > 0 ? el('button', { class: 'x', type: 'button', text: '↑', title: 'Hacer principal',
+          onclick: () => {
+            const d = pr.designados.slice();
+            d.splice(i, 1); d.unshift(n);
+            guarda('designados', d); pintarGente(); render();
+          } }) : null,
+        el('button', { class: 'x', type: 'button', text: '✕', title: 'Quitar',
+          onclick: () => { guarda('designados', pr.designados.filter(x => x !== n)); pintarGente(); } })
+      ].filter(Boolean)));
     });
+    nombres().filter(n => !(pr.designados || []).includes(n)).forEach(n =>
+      cajaGente.appendChild(el('button', { class: 'tag', type: 'button', text: '+ ' + n,
+        onclick: () => { guarda('designados', [...(pr.designados || []), n]); pintarGente(); } })));
   };
-  pintarPersonas();
-  card.appendChild(el('div', { style: 'margin-top:12px' }, [
-    el('div', { style: 'font-size:12px;color:var(--ink-muted);margin-bottom:4px', text: 'Designados' }),
-    cajaPersonas
-  ]));
+  pintarGente();
+  card.appendChild(cajaGente);
 
   /* --- pasos --- */
-  const caja = el('div', { style: 'margin-top:14px' });
+  card.appendChild(el('div', { class: 'bloque-t', text: 'Pasos' }));
+  const cajaPasos = el('div', {});
   const pintarPasos = () => {
-    caja.innerHTML = '';
-    caja.appendChild(el('div', { style: 'font-size:12px;color:var(--ink-muted);margin-bottom:4px',
-      text: 'Pasos' }));
-    const pasos = pasosDe(pr.id);
-    if (!pasos.length) caja.appendChild(el('div', { style: 'font-size:13px;color:var(--ink-muted);padding:6px 0',
-      text: 'Sin pasos todavía.' }));
-
+    cajaPasos.innerHTML = '';
+    const pasos = Modelo.pasosDe(pr.id);
+    if (!pasos.length) cajaPasos.appendChild(el('div', { style: 'font-size:13px;color:var(--ink-muted)',
+      text: 'Sin pasos.' }));
     pasos.forEach((paso, i) => {
       const listo = paso.estado === 'Completado';
-      const atrasado = paso.plazo && paso.estado === 'Pendiente' && paso.plazo < hoy();
-
       const chk = el('input', { type: 'checkbox', 'aria-label': 'Paso completado' });
       chk.checked = listo;
       chk.addEventListener('change', () => {
@@ -345,19 +545,17 @@ function tarjetaProyecto(pr) {
         Datos.guardar('pasos', paso);
         pintarPasos(); refrescarCabeza();
       });
-
-      const desc = el('input', { type: 'text', class: 'col2', value: paso.descripcion });
+      const desc = el('input', { type: 'text', value: paso.descripcion });
       desc.addEventListener('change', () => { paso.descripcion = desc.value; Datos.guardar('pasos', paso); });
-
-      const fecha = el('input', { type: 'date', value: paso.plazo || '' });
+      const fecha = el('input', { type: 'date', class: 'oculta-movil', value: paso.plazo || '' });
       fecha.addEventListener('change', () => { paso.plazo = fecha.value; Datos.guardar('pasos', paso); pintarPasos(); });
-
+      if (paso.plazo && !listo && paso.plazo < hoy()) fecha.classList.add('vencido');
       const est = selector(SPT.listas.estadoPaso, paso.estado || 'Pendiente', v => {
         paso.estado = v; Datos.guardar('pasos', paso); pintarPasos(); refrescarCabeza();
       }, null);
-
-      const enc = el('select', { multiple: 'multiple', size: 1, 'aria-label': 'Encargados',
-        title: 'Encargados del paso' });
+      est.classList.add('oculta-movil');
+      const enc = el('select', { multiple: 'multiple', size: 1, class: 'oculta-movil',
+        title: 'Encargados del paso', 'aria-label': 'Encargados' });
       nombres().forEach(n => {
         const o = el('option', { value: n, text: n });
         if ((paso.encargados || []).includes(n)) o.selected = true;
@@ -367,58 +565,53 @@ function tarjetaProyecto(pr) {
         paso.encargados = [...enc.selectedOptions].map(o => o.value).slice(0, 2);
         Datos.guardar('pasos', paso);
       });
-
-      const fila = el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
+      cajaPasos.appendChild(el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
         el('span', { class: 'n', text: String(i + 1) }), chk, desc, fecha, est, enc,
         el('button', { class: 'x', type: 'button', text: '✕', title: 'Eliminar paso',
           onclick: () => { Datos.borrar('pasos', paso.id); pintarPasos(); refrescarCabeza(); } })
-      ]);
-      if (atrasado) fecha.classList.add('vencido');
-      caja.appendChild(fila);
+      ]));
     });
-
-    const nuevo = el('input', { type: 'text', placeholder: 'Nuevo paso…', style: 'max-width:340px' });
+    const nuevo = el('input', { type: 'text', placeholder: 'Nuevo paso…', style: 'max-width:300px' });
     const agregar = () => {
-      const t = nuevo.value.trim();
-      if (!t) return;
-      Modelo.agregarPaso(pr.id, t);
-      nuevo.value = '';
-      pintarPasos(); refrescarCabeza();
+      if (!nuevo.value.trim()) return;
+      Modelo.agregarPaso(pr.id, nuevo.value.trim());
+      nuevo.value = ''; pintarPasos(); refrescarCabeza();
     };
     nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
-    caja.appendChild(el('div', { class: 'fila', style: 'margin-top:10px; display:flex; gap:8px' }, [
-      nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar paso', onclick: agregar })
+    cajaPasos.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:8px' }, [
+      nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
     ]));
   };
-
-  const refrescarCabeza = () => {
-    const a2 = avanceDe(pr.id);
-    cabeza.replaceChild(barra(a2), cabeza.children[1]);
-    cabeza.children[2].textContent = `${pct(a2)} · ${pasosDe(pr.id).length} pasos`;
-  };
-
   pintarPasos();
-  card.appendChild(caja);
+  card.appendChild(cajaPasos);
 
-  /* --- hitos --- */
-  const cajaHitos = el('div', { style: 'margin-top:16px' });
+  /* --- hitos: se agendan --- */
+  card.appendChild(el('div', { class: 'bloque-t', text: 'Hitos · quedan en el calendario' }));
+  const cajaHitos = el('div', {});
   const pintarHitos = () => {
     cajaHitos.innerHTML = '';
-    cajaHitos.appendChild(el('div', { style: 'font-size:12px;color:var(--ink-muted);margin-bottom:4px',
-      text: 'Hitos' }));
-    const hitos = hitosDe(pr.id);
+    const hitos = Datos.todo('hitos').filter(h => h.proyecto === pr.id);
     if (!hitos.length) cajaHitos.appendChild(el('div', { style: 'font-size:13px;color:var(--ink-muted)',
       text: 'Sin hitos.' }));
     hitos.forEach(h => {
-      const f = el('input', { type: 'date', value: h.fecha || '', style: 'max-width:150px' });
+      const f = el('input', { type: 'datetime-local', value: h.fecha || '', style: 'max-width:200px' });
       f.addEventListener('change', () => { h.fecha = f.value; Datos.guardar('hitos', h); });
-      cajaHitos.appendChild(el('div', { class: 'fila', style: 'display:flex; gap:8px; align-items:center; padding:4px 0' }, [
-        el('span', { style: 'flex:1', text: h.detalle }), f,
+      const d = el('input', { type: 'text', value: h.detalle, style: 'flex:1' });
+      d.addEventListener('change', () => { h.detalle = d.value; Datos.guardar('hitos', h); });
+      cajaHitos.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:3px 0' }, [
+        d, f,
+        el('button', { class: 'btn btn-sm', type: 'button', text: 'Agendar', title: 'Crear una reunión con este hito',
+          onclick: () => {
+            Datos.guardar('agenda', { id: uid(), tema: h.detalle, inicio: h.fecha || '', duracion: 60,
+              formato: 'Presencial', lugar: '', invitados: (pr.designados || []).join(', '),
+              estado: 'Por agendar', proyecto: pr.id });
+            vista = 'calendario'; marcarTab(); render();
+          } }),
         el('button', { class: 'x', type: 'button', text: '✕',
           onclick: () => { Datos.borrar('hitos', h.id); pintarHitos(); } })
       ]));
     });
-    const nuevo = el('input', { type: 'text', placeholder: 'Nuevo hito…', style: 'max-width:340px' });
+    const nuevo = el('input', { type: 'text', placeholder: 'Nuevo hito…', style: 'max-width:300px' });
     const agregar = () => {
       if (!nuevo.value.trim()) return;
       Datos.guardar('hitos', { id: uid(), proyecto: pr.id, detalle: nuevo.value.trim(), fecha: '' });
@@ -432,36 +625,233 @@ function tarjetaProyecto(pr) {
   pintarHitos();
   card.appendChild(cajaHitos);
 
-  /* --- pie: vínculo con el programa y eliminar --- */
-  const pie = el('div', { class: 'toolbar', style: 'margin:16px 0 0' });
-  if (prop) pie.appendChild(el('a', { class: 'btn btn-sm', href: `index.html#${prop.c}`,
-    text: `Ver ${prop.c} en el Conectómetro` }));
+  /* --- enlaces del proyecto (Drive, cronogramas, documentos) --- */
+  card.appendChild(el('div', { class: 'bloque-t', text: 'Carpetas y documentos' }));
+  const cajaEnlaces = el('div', {});
+  const pintarEnlaces = () => {
+    cajaEnlaces.innerHTML = '';
+    const propios = Datos.todo('enlaces').filter(e => e.proyecto === pr.id);
+    propios.forEach(g => {
+      const n = el('input', { type: 'text', value: g.nombre, style: 'max-width:180px' });
+      n.addEventListener('change', () => { g.nombre = n.value; Datos.guardar('enlaces', g); });
+      const u = el('input', { type: 'url', value: g.url || '', placeholder: 'https://drive.google.com/…' });
+      u.addEventListener('change', () => { g.url = u.value; Datos.guardar('enlaces', g); pintarEnlaces(); });
+      cajaEnlaces.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:3px 0' }, [
+        n, u,
+        g.url ? el('a', { class: 'btn btn-sm', href: g.url, target: '_blank', rel: 'noopener', text: 'Abrir' }) : null,
+        el('button', { class: 'x', type: 'button', text: '✕',
+          onclick: () => { Datos.borrar('enlaces', g.id); pintarEnlaces(); } })
+      ].filter(Boolean)));
+    });
+    const opciones = ['Carpeta de Drive', 'Cronograma', 'Documento de trabajo', 'Acta'];
+    cajaEnlaces.appendChild(el('div', { style: 'display:flex; gap:6px; margin-top:8px; flex-wrap:wrap' },
+      opciones.map(o => el('button', { class: 'btn btn-sm', type: 'button', text: '+ ' + o,
+        onclick: () => {
+          Datos.guardar('enlaces', { id: uid(), proyecto: pr.id, nombre: o, url: '' });
+          pintarEnlaces();
+        } }))));
+  };
+  pintarEnlaces();
+  card.appendChild(cajaEnlaces);
+
+  /* --- pie --- */
+  const pie = el('div', { class: 'toolbar', style: 'margin:14px 0 0' });
+  if (it.codigo) pie.appendChild(el('a', { class: 'btn btn-sm', href: `index.html#${it.codigo}`,
+    text: `Ver ${it.codigo} en el programa` }));
   pie.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Agendar reunión',
     onclick: () => {
       Datos.guardar('agenda', { id: uid(), tema: 'Reunión — ' + pr.nombre, inicio: '', duracion: 60,
         formato: 'Presencial', lugar: '', invitados: (pr.designados || []).join(', '),
         estado: 'Por agendar', proyecto: pr.id });
-      vista = 'agenda'; marcarTab(); render();
+      vista = 'calendario'; marcarTab(); render();
     } }));
-  pie.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Eliminar proyecto',
+  if (!it.codigo) pie.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Eliminar',
     onclick: () => {
-      if (!confirm(`¿Eliminar "${pr.nombre}" y sus ${pasosDe(pr.id).length} pasos?`)) return;
-      pasosDe(pr.id).forEach(p => Datos.borrar('pasos', p.id));
-      hitosDe(pr.id).forEach(h => Datos.borrar('hitos', h.id));
+      if (!confirm(`¿Eliminar "${pr.nombre}" y todo lo que cuelga de él?`)) return;
+      Modelo.pasosDe(pr.id).forEach(p => Datos.borrar('pasos', p.id));
+      Datos.todo('hitos').filter(h => h.proyecto === pr.id).forEach(h => Datos.borrar('hitos', h.id));
+      Datos.todo('enlaces').filter(e => e.proyecto === pr.id).forEach(e => Datos.borrar('enlaces', e.id));
       Datos.borrar('proyectos', pr.id);
       render();
     } }));
   card.appendChild(pie);
 
-  if (prop) card.appendChild(el('div', { class: 'literal', style: 'margin-top:12px' },
-    el('p', { text: recorta(prop.d, 400) })));
-
+  if (it.texto) card.appendChild(el('div', { class: 'literal', style: 'margin-top:10px' },
+    el('p', { text: recorta(it.texto, 320) })));
   return card;
 }
 
 /* ------------------------------------------------------------------ *
- * Vista: Agenda
+ * 6. Vista: Calendario
  * ------------------------------------------------------------------ */
+function eventosDelMes(inicioMes, finMes) {
+  const dentro = f => f && f.slice(0, 10) >= inicioMes && f.slice(0, 10) <= finMes;
+  const mios = n => !filtros.persona || (n || []).includes(filtros.persona);
+  const lista = [];
+
+  Datos.todo('agenda').forEach(ev => {
+    if (!dentro(ev.inicio)) return;
+    const invitados = String(ev.invitados || '').split(',').map(s => s.trim()).filter(Boolean);
+    if (!mios(invitados)) return;
+    lista.push({ tipo: 'reunion', fecha: ev.inicio.slice(0, 10), hora: horaDe(ev.inicio),
+      titulo: ev.tema, gente: invitados, ref: ev });
+  });
+
+  items().forEach(it => {
+    hitosDe(it).forEach(h => {
+      if (!dentro(h.fecha)) return;
+      if (!mios(designados(it))) return;
+      lista.push({ tipo: 'hito', fecha: h.fecha.slice(0, 10), hora: horaDe(h.fecha),
+        titulo: h.detalle, contexto: it.nombre, gente: designados(it) });
+    });
+    pasosDe(it).forEach(p => {
+      if (!dentro(p.plazo)) return;
+      if (!mios(p.encargados || [])) return;
+      lista.push({ tipo: p.estado === 'Pendiente' && p.plazo < hoy() ? 'vencido' : 'paso',
+        fecha: p.plazo.slice(0, 10), hora: '', titulo: p.descripcion, contexto: it.nombre,
+        gente: p.encargados || [], hecho: p.estado === 'Completado' });
+    });
+  });
+  return lista.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+}
+
+function vistaCalendario(raiz) {
+  const y = mes.getFullYear(), m = mes.getMonth();
+  const primero = new Date(y, m, 1);
+  const ultimo = new Date(y, m + 1, 0);
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const eventos = eventosDelMes(iso(primero), iso(ultimo));
+  const porDia = eventos.reduce((a, e) => ((a[e.fecha] = a[e.fecha] || []).push(e), a), {});
+
+  const barra = el('div', { class: 'cal-barra' }, [
+    el('button', { class: 'btn btn-sm', type: 'button', text: '‹', 'aria-label': 'Mes anterior',
+      onclick: () => { mes = new Date(y, m - 1, 1); render(); } }),
+    el('span', { class: 'cal-mes', text: (() => {
+      const n = primero.toLocaleDateString('es-CL', { month: 'long' });
+      return n.charAt(0).toUpperCase() + n.slice(1) + ' ' + primero.getFullYear();
+    })() }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: '›', 'aria-label': 'Mes siguiente',
+      onclick: () => { mes = new Date(y, m + 1, 1); render(); } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Hoy',
+      onclick: () => { mes = new Date(); diaElegido = hoy(); render(); } }),
+    el('span', { class: 'count', text: filtros.persona ? `Calendario de ${filtros.persona}` : 'Calendario del equipo' })
+  ]);
+
+  const grilla = el('div', { class: 'cal' });
+  ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].forEach(d =>
+    grilla.appendChild(el('div', { class: 'dow', text: d })));
+
+  const desplazamiento = (primero.getDay() + 6) % 7;   /* la semana parte el lunes */
+  const inicio = new Date(y, m, 1 - desplazamiento);
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
+    const clave = iso(d);
+    const delMes = d.getMonth() === m;
+    const evs = porDia[clave] || [];
+    const celda = el('button', {
+      class: 'dia' + (delMes ? '' : ' fuera') + (clave === hoy() ? ' hoy' : '') +
+             (clave === diaElegido ? ' elegido' : ''),
+      type: 'button', onclick: () => { diaElegido = clave; render(); }
+    }, [el('span', { class: 'n', text: String(d.getDate()) })]);
+    evs.slice(0, 3).forEach(e => celda.appendChild(el('span', {
+      class: 'ev ' + e.tipo, text: (e.hora ? e.hora + ' ' : '') + recorta(e.titulo, 22) })));
+    if (evs.length > 3) celda.appendChild(el('span', { class: 'n', text: `+${evs.length - 3}` }));
+    if (evs.length) celda.appendChild(el('span', { class: 'punto-dia' },
+      evs.slice(0, 6).map(e => el('i', { style: `background:${
+        e.tipo === 'vencido' ? 'var(--critical)' : e.tipo === 'hito' ? 'var(--warning)' : 'var(--ramp-3)'}` }))));
+    grilla.appendChild(celda);
+  }
+
+  raiz.appendChild(el('div', { class: 'card compacta' }, [barra, grilla,
+    Graficos.leyenda([
+      { etiqueta: 'Reunión', color: 'var(--track)' },
+      { etiqueta: 'Hito', color: 'var(--warning)' },
+      { etiqueta: 'Plazo de un paso', color: 'var(--ramp-3)' },
+      { etiqueta: 'Plazo vencido', color: 'var(--critical)' }
+    ])]));
+
+  /* Día elegido */
+  const delDia = (porDia[diaElegido] || []);
+  const card = el('div', { class: 'card compacta' }, [
+    el('h2', { text: diaElegido ? fechaCorta(diaElegido) : 'Elige un día' }),
+    el('div', { class: 'sub', text: diaElegido ? `${delDia.length} cosas ese día` : 'Toca un día del calendario' })
+  ]);
+  delDia.forEach(e => card.appendChild(el('div', { class: 'evento' }, [
+    el('div', { class: 'cuando' }, [el('b', { text: e.hora || '—' }),
+      el('span', { text: e.tipo === 'reunion' ? 'reunión' : e.tipo === 'hito' ? 'hito' : 'plazo' })]),
+    el('div', { class: 'qué' }, [
+      el('div', { text: e.titulo }),
+      el('div', { style: 'font-size:12px;color:var(--ink-muted)',
+        text: [e.contexto, (e.gente || []).join(', ')].filter(Boolean).join(' · ') || '—' })
+    ])
+  ])));
+  if (diaElegido) {
+    const inTema = el('input', { type: 'text', placeholder: 'Nueva reunión ese día' });
+    const inHora = el('input', { type: 'time', value: '18:00', style: 'max-width:120px' });
+    card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' }, [
+      inTema, inHora,
+      el('button', { class: 'btn btn-sm btn-primary', type: 'button', text: 'Agendar', onclick: () => {
+        if (!inTema.value.trim()) return;
+        Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(),
+          inicio: `${diaElegido}T${inHora.value || '18:00'}`, duracion: 60, formato: 'Presencial',
+          lugar: '', invitados: filtros.persona || '', estado: 'Por agendar', proyecto: null });
+        render();
+      } })
+    ]));
+  }
+  raiz.appendChild(card);
+
+  /* Reuniones: edición y sincronización */
+  const reuniones = Datos.todo('agenda').slice()
+    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
+  const card2 = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Reuniones agendadas' }),
+    el('div', { class: 'sub', text: `${reuniones.length} en total · la invitación sirve para Google Calendar` })
+  ]);
+  if (!reuniones.length) card2.appendChild(el('div', { class: 'empty', text: 'Nada agendado todavía.' }));
+  reuniones.forEach(ev => {
+    const c = (tipo, valor, nombre, extra) => {
+      const i = el('input', Object.assign({ type: tipo, value: valor || '' }, extra || {}));
+      i.addEventListener('change', () => { ev[nombre] = i.value; Datos.guardar('agenda', ev); render(); });
+      return i;
+    };
+    card2.appendChild(el('div', { class: 'evento' }, [
+      el('div', { class: 'cuando' }, [el('b', { text: ev.inicio ? fechaCorta(ev.inicio) : '—' }),
+        el('span', { text: horaDe(ev.inicio) || 'sin hora' })]),
+      el('div', { class: 'qué' }, [
+        c('text', ev.tema, 'tema'),
+        el('div', { class: 'campos' }, [
+          el('label', { class: 'field' }, [el('span', { text: 'Cuándo' }), c('datetime-local', ev.inicio, 'inicio')]),
+          el('label', { class: 'field' }, [el('span', { text: 'Minutos' }), c('number', ev.duracion || 60, 'duracion', { min: 15, step: 15 })]),
+          el('label', { class: 'field' }, [el('span', { text: 'Formato' }),
+            selector(SPT.listas.formato, ev.formato, v => { ev.formato = v; Datos.guardar('agenda', ev); }, null)]),
+          el('label', { class: 'field' }, [el('span', { text: 'Lugar o enlace' }), c('text', ev.lugar, 'lugar')]),
+          el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')])
+        ]),
+        el('div', { class: 'toolbar', style: 'margin:8px 0 0' }, [
+          el('button', { class: 'btn btn-sm', type: 'button', text: 'Descargar invitación',
+            onclick: () => descargar((ev.tema || 'reunion').replace(/\W+/g, '-') + '.ics',
+              ics(ev), 'text/calendar;charset=utf-8') }),
+          el('button', { class: 'x', type: 'button', text: '✕ eliminar',
+            onclick: () => { Datos.borrar('agenda', ev.id); render(); } })
+        ])
+      ])
+    ]));
+  });
+  raiz.appendChild(card2);
+
+  raiz.appendChild(el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Google Calendar' }),
+    el('div', { class: 'sub', text: 'Sincronización en los dos sentidos' }),
+    el('div', { class: 'note' }, [
+      el('p', { text: 'Por ahora cada reunión se pasa a Google con el botón "Descargar invitación": ' +
+        'el archivo se abre y queda en el calendario.' }),
+      el('p', { text: 'La sincronización automática necesita la cuenta de servicio de Google conectada ' +
+        'en el servidor. Cuando esté, los eventos suben solos y los cambios hechos en Google bajan acá.' })
+    ])
+  ]));
+}
+
 function ics(ev) {
   const f = s => (s || '').replace(/[-:]/g, '').replace(/\.\d+/, '');
   const inicio = ev.inicio ? f(ev.inicio.length <= 10 ? ev.inicio + 'T09:00' : ev.inicio) + '00' : '';
@@ -469,14 +859,13 @@ function ics(ev) {
     if (!ev.inicio) return '';
     const d = new Date(ev.inicio.length <= 10 ? ev.inicio + 'T09:00' : ev.inicio);
     d.setMinutes(d.getMinutes() + (Number(ev.duracion) || 60));
-    return f(d.toISOString().slice(0, 16)) + '00';
+    return f(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` +
+      `T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`) + '00';
   })();
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FECh//SPT//ES', 'BEGIN:VEVENT',
     'UID:' + ev.id, 'DTSTART:' + inicio, 'DTEND:' + fin,
-    'SUMMARY:' + (ev.tema || 'Reunión'),
-    'LOCATION:' + (ev.lugar || ''),
-    'DESCRIPTION:' + ('Invitados: ' + (ev.invitados || '—')),
-    'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    'SUMMARY:' + (ev.tema || 'Reunión'), 'LOCATION:' + (ev.lugar || ''),
+    'DESCRIPTION:Invitados: ' + (ev.invitados || '—'), 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }
 
 function descargar(nombre, contenido, tipo) {
@@ -486,203 +875,83 @@ function descargar(nombre, contenido, tipo) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function vistaAgenda(raiz) {
-  const eventos = Datos.todo('agenda').slice()
-    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
-
-  const card = el('div', { class: 'card' }, [
-    el('h2', { text: 'Agendamiento e hitos' }),
-    el('div', { class: 'sub', text: 'Reuniones y actividades de la secretaría' })
-  ]);
-
-  const inTema = el('input', { type: 'text', placeholder: 'Tema de la reunión' });
-  const inFecha = el('input', { type: 'datetime-local' });
-  card.appendChild(el('div', { class: 'form-grid' }, [
-    el('label', { class: 'field' }, [el('span', { text: 'Tema' }), inTema]),
-    el('label', { class: 'field' }, [el('span', { text: 'Fecha y hora' }), inFecha])
-  ]));
-  card.appendChild(el('div', { class: 'toolbar', style: 'margin:12px 0 0' },
-    el('button', { class: 'btn btn-primary', type: 'button', text: 'Agendar', onclick: () => {
-      if (!inTema.value.trim()) { inTema.focus(); return; }
-      Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(), inicio: inFecha.value,
-        duracion: 60, formato: 'Presencial', lugar: '', invitados: '', estado: 'Por agendar', proyecto: null });
-      inTema.value = ''; inFecha.value = '';
-      render();
-    } })));
-  raiz.appendChild(card);
-
-  const lista = el('div', { class: 'card' }, [
-    el('h2', { text: `${eventos.length} evento${eventos.length === 1 ? '' : 's'}` }),
-    el('div', { class: 'sub', text: 'Toca la fecha o el lugar para editarlos' })
-  ]);
-  if (!eventos.length) lista.appendChild(el('div', { class: 'empty', text: 'La agenda está vacía.' }));
-
-  eventos.forEach(ev => {
-    const campo = (tipo, valor, campoNombre, extra) => {
-      const i = el('input', Object.assign({ type: tipo, value: valor || '' }, extra || {}));
-      i.addEventListener('change', () => { ev[campoNombre] = i.value; Datos.guardar('agenda', ev); });
-      return i;
-    };
-    const cuando = el('div', { class: 'cuando' }, [
-      el('b', { text: ev.inicio ? fechaCorta(ev.inicio) : '—' }),
-      el('span', { text: horaDe(ev.inicio) || 'sin hora' })
-    ]);
-    const detalle = el('div', { class: 'qué' }, [
-      campo('text', ev.tema, 'tema'),
-      el('div', { class: 'form-grid', style: 'margin-top:8px' }, [
-        el('label', { class: 'field' }, [el('span', { text: 'Cuándo' }),
-          campo('datetime-local', ev.inicio, 'inicio')]),
-        el('label', { class: 'field' }, [el('span', { text: 'Duración (min)' }),
-          campo('number', ev.duracion || 60, 'duracion', { min: 15, step: 15 })]),
-        el('label', { class: 'field' }, [el('span', { text: 'Formato' }),
-          selector(SPT.listas.formato, ev.formato, v => { ev.formato = v; Datos.guardar('agenda', ev); }, null)]),
-        el('label', { class: 'field' }, [el('span', { text: 'Lugar o enlace' }),
-          campo('text', ev.lugar, 'lugar')]),
-        el('label', { class: 'field' }, [el('span', { text: 'Invitados' }),
-          campo('text', ev.invitados, 'invitados')])
-      ]),
-      el('div', { class: 'toolbar', style: 'margin:10px 0 0' }, [
-        el('button', { class: 'btn btn-sm', type: 'button', text: 'Descargar invitación',
-          title: 'Archivo .ics para Google Calendar u Outlook',
-          onclick: () => descargar((ev.tema || 'reunion').replace(/\W+/g, '-') + '.ics',
-            ics(ev), 'text/calendar;charset=utf-8') }),
-        el('button', { class: 'x', type: 'button', text: '✕ eliminar',
-          onclick: () => { Datos.borrar('agenda', ev.id); render(); } })
-      ])
-    ]);
-    lista.appendChild(el('div', { class: 'evento' }, [cuando, detalle]));
-  });
-  raiz.appendChild(lista);
-}
-
 /* ------------------------------------------------------------------ *
- * Vista: Equipo
+ * 7. Vista: Equipo
  * ------------------------------------------------------------------ */
 function vistaEquipo(raiz) {
-  const card = el('div', { class: 'card' }, [
+  const card = el('div', { class: 'card compacta' }, [
     el('h2', { text: 'Integrantes' }),
-    el('div', { class: 'sub', text: 'Quiénes pueden quedar designados en proyectos y pasos' })
+    el('div', { class: 'sub', text: 'Nombre, rol y correo: el correo es lo que usarán los recordatorios' })
   ]);
 
-  const t = el('table');
-  t.appendChild(el('thead', {}, el('tr', {}, [
-    el('th', { text: 'Nombre' }), el('th', { text: 'Rol' }), el('th', { text: 'Correo' }), el('th', { text: '' })
-  ])));
-  const tb = el('tbody');
-  integrantes().forEach(p => {
-    const campo = (valor, nombre, tipo) => {
-      const i = el('input', { type: tipo || 'text', value: valor || '' });
+  const filas = integrantes().map(p => {
+    const campoTxt = (valor, nombre, tipo, ph) => {
+      const i = el('input', { type: tipo || 'text', value: valor || '', placeholder: ph || '' });
       i.addEventListener('change', () => { p[nombre] = i.value; Datos.guardar('integrantes', p); });
       return i;
     };
-    tb.appendChild(el('tr', {}, [
-      el('td', {}, campo(p.nombre, 'nombre')),
-      el('td', {}, campo(p.rol, 'rol')),
-      el('td', {}, campo(p.correo, 'correo', 'email')),
-      el('td', {}, el('button', { class: 'x', type: 'button', text: '✕',
-        onclick: () => { Datos.borrar('integrantes', p.id); render(); } }))
-    ]));
+    return [campoTxt(p.nombre, 'nombre'), campoTxt(p.rol, 'rol', 'text', 'Rol en la secretaría'),
+      campoTxt(p.correo, 'correo', 'email', 'nombre@ug.uchile.cl'),
+      el('button', { class: 'x', type: 'button', text: '✕',
+        onclick: () => { Datos.borrar('integrantes', p.id); render(); } })];
   });
-  t.appendChild(tb);
-  if (integrantes().length) card.appendChild(el('div', { class: 'tablewrap' }, t));
-  else card.appendChild(el('div', { class: 'empty', text: 'Todavía no hay integrantes.' }));
+  card.appendChild(filas.length
+    ? tablaDensa(['Nombre', 'Rol', 'Correo', ''], filas)
+    : el('div', { class: 'empty', text: 'Todavía no hay integrantes.' }));
 
-  const nuevo = el('input', { type: 'text', placeholder: 'Nombre', style: 'max-width:260px' });
+  const nuevo = el('input', { type: 'text', placeholder: 'Nombre', style: 'max-width:220px' });
+  const correo = el('input', { type: 'email', placeholder: 'Correo', style: 'max-width:240px' });
   const agregar = () => {
     if (!nuevo.value.trim()) return;
-    Datos.guardar('integrantes', { id: uid(), nombre: nuevo.value.trim(), rol: '', correo: '' });
-    nuevo.value = ''; render();
+    Datos.guardar('integrantes', { id: uid(), nombre: nuevo.value.trim(), rol: '', correo: correo.value.trim() });
+    nuevo.value = ''; correo.value = ''; render();
   };
   nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
-  card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:12px' }, [
-    nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar integrante', onclick: agregar })
+  correo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
+  card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' }, [
+    nuevo, correo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
   ]));
   raiz.appendChild(card);
 
-  /* enlaces */
-  const card2 = el('div', { class: 'card' }, [
-    el('h2', { text: 'Enlaces de la secretaría' }),
-    el('div', { class: 'sub', text: 'Los documentos y carpetas que se usan siempre' })
+  /* Enlaces generales de la secretaría */
+  const card2 = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Carpetas y documentos de la secretaría' }),
+    el('div', { class: 'sub', text: 'Drive, cronogramas, actas: lo que se usa siempre' })
   ]);
-  const guardados = Datos.todo('enlaces');
-  const faltantes = SPT.enlacesBase.filter(n => !guardados.some(g => g.nombre === n));
+  const generales = Datos.todo('enlaces').filter(e => !e.proyecto);
+  const faltantes = SPT.enlacesBase.filter(n => !generales.some(g => g.nombre === n));
   if (faltantes.length) card2.appendChild(el('div', { class: 'toolbar' },
-    el('button', { class: 'btn btn-sm', type: 'button',
-      text: `Crear los ${faltantes.length} enlaces habituales`, onclick: () => {
-        faltantes.forEach(n => Datos.guardar('enlaces', { id: uid(), nombre: n, url: '' }));
+    el('button', { class: 'btn btn-sm', type: 'button', text: `Crear los ${faltantes.length} habituales`,
+      onclick: () => {
+        faltantes.forEach(n => Datos.guardar('enlaces', { id: uid(), nombre: n, url: '', proyecto: null }));
         render();
       } })));
-  guardados.forEach(g => {
-    const u = el('input', { type: 'url', value: g.url || '', placeholder: 'https://…' });
-    u.addEventListener('change', () => { g.url = u.value; Datos.guardar('enlaces', g); });
-    card2.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:5px 0' }, [
-      el('span', { style: 'min-width:190px; font-size:13.5px', text: g.nombre }), u,
+  generales.forEach(g => {
+    const n = el('input', { type: 'text', value: g.nombre, style: 'max-width:190px' });
+    n.addEventListener('change', () => { g.nombre = n.value; Datos.guardar('enlaces', g); });
+    const u = el('input', { type: 'url', value: g.url || '', placeholder: 'https://drive.google.com/…' });
+    u.addEventListener('change', () => { g.url = u.value; Datos.guardar('enlaces', g); render(); });
+    card2.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:3px 0' }, [
+      n, u,
       g.url ? el('a', { class: 'btn btn-sm', href: g.url, target: '_blank', rel: 'noopener', text: 'Abrir' }) : null,
       el('button', { class: 'x', type: 'button', text: '✕',
         onclick: () => { Datos.borrar('enlaces', g.id); render(); } })
     ].filter(Boolean)));
   });
+  const nombreEnlace = el('input', { type: 'text', placeholder: 'Nombre del enlace', style: 'max-width:220px' });
+  const agregarEnlace = () => {
+    if (!nombreEnlace.value.trim()) return;
+    Datos.guardar('enlaces', { id: uid(), nombre: nombreEnlace.value.trim(), url: '', proyecto: null });
+    nombreEnlace.value = ''; render();
+  };
+  card2.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px' }, [
+    nombreEnlace, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregarEnlace })
+  ]));
   raiz.appendChild(card2);
 }
 
 /* ------------------------------------------------------------------ *
- * Vista: Conexión
- * ------------------------------------------------------------------ */
-function vistaConexion(raiz) {
-  const con = Datos.conexionGuardada();
-  const card = el('div', { class: 'card' }, [
-    el('h2', { text: 'Base de datos compartida' }),
-    el('div', { class: 'sub', text: 'Para que todo el equipo vea y edite lo mismo' })
-  ]);
-
-  card.appendChild(el('div', { class: 'note' }, [
-    el('p', { text: Datos.modo === 'supabase'
-      ? '✓ Conectado a la base compartida. Lo que edites lo ven las demás personas.'
-      : 'Ahora mismo los datos se guardan sólo en este navegador. Nadie más los ve.' }),
-    Datos.mensaje ? el('p', { text: Datos.mensaje }) : null
-  ].filter(Boolean)));
-
-  const inUrl = el('input', { type: 'url', placeholder: 'https://xxxxx.supabase.co',
-    value: con ? con.url : '' });
-  const inClave = el('input', { type: 'text', placeholder: 'clave anon pública',
-    value: con ? con.clave : '' });
-  card.appendChild(el('div', { class: 'form-grid', style: 'margin-top:12px' }, [
-    el('label', { class: 'field' }, [el('span', { text: 'URL del proyecto' }), inUrl]),
-    el('label', { class: 'field' }, [el('span', { text: 'Clave pública (anon)' }), inClave])
-  ]));
-  card.appendChild(el('div', { class: 'toolbar', style: 'margin:12px 0 0' }, [
-    el('button', { class: 'btn btn-primary', type: 'button', text: 'Conectar', onclick: async () => {
-      if (!inUrl.value.trim() || !inClave.value.trim()) return;
-      Datos.guardarConexion(inUrl.value, inClave.value);
-      await Datos.iniciar();
-      render();
-    } }),
-    con ? el('button', { class: 'btn', type: 'button', text: 'Olvidar conexión', onclick: () => {
-      Datos.olvidarConexion(); location.reload();
-    } }) : null,
-    Datos.modo === 'supabase' ? el('button', { class: 'btn', type: 'button',
-      text: 'Traer cambios de otras personas', onclick: async () => { await Datos.refrescar(); render(); } }) : null
-  ].filter(Boolean)));
-  raiz.appendChild(card);
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Cómo se conecta' }),
-    el('div', { class: 'sub', text: 'Una vez, y queda andando' }),
-    el('div', { class: 'note' }, [
-      el('p', { text: '1. Crea una cuenta gratis en supabase.com y un proyecto nuevo.' }),
-      el('p', { text: '2. En el panel de Supabase, abre el editor SQL y pega el contenido del archivo ' +
-        'supabase/esquema.sql que viene con esta aplicación. Eso crea las tablas.' }),
-      el('p', { text: '3. En Ajustes → API copia la URL del proyecto y la clave anon pública, y pégalas acá arriba.' }),
-      el('p', { text: '4. Cada persona del equipo hace sólo el paso 3, con los mismos dos datos. ' +
-        'Seis personas editando a la vez no son problema.' }),
-      el('p', { text: 'Con la clave anon cualquiera que tenga esos dos datos puede editar. Sirve para partir ' +
-        'entre el equipo; cuando quieras cuentas con contraseña, se activa el login de Supabase.' })
-    ])
-  ]));
-}
-
-/* ------------------------------------------------------------------ *
- * Filtros, router y arranque
+ * 8. Filtros, router y arranque
  * ------------------------------------------------------------------ */
 function poblarFiltros() {
   const set = (sel, opciones, valor, vacio) => {
@@ -694,7 +963,7 @@ function poblarFiltros() {
   };
   set('#f-estado', SPT.listas.estadoProyecto, filtros.estado, 'Todos los estados');
   set('#f-urgencia', SPT.listas.urgencia, filtros.urgencia, 'Toda urgencia');
-  set('#f-naturaleza', SPT.listas.naturaleza, filtros.naturaleza, 'Toda naturaleza');
+  set('#f-origen', ['Programa', 'Propio'], filtros.origen, 'Todo origen');
   set('#f-persona', nombres(), filtros.persona, 'Todo el equipo');
   $('#f-texto').value = filtros.texto;
 }
@@ -705,16 +974,19 @@ function marcarTab() {
 }
 
 function render() {
+  window.REDIBUJAR = [];
   const raiz = $('#vista');
   raiz.innerHTML = '';
-  $('#filtros').style.display = (vista === 'tablero' || vista === 'proyectos') ? '' : 'none';
+  $('#filtros').style.display = (vista === 'equipo') ? 'none' : '';
   UI.pintarConexion($('#conexion'));
   if (vista === 'tablero') vistaTablero(raiz);
+  else if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'proyectos') vistaProyectos(raiz);
-  else if (vista === 'agenda') vistaAgenda(raiz);
-  else if (vista === 'equipo') vistaEquipo(raiz);
-  else vistaConexion(raiz);
+  else if (vista === 'calendario') vistaCalendario(raiz);
+  else vistaEquipo(raiz);
 }
+
+let oyentesGlobales = false;
 
 async function iniciar() {
   Datos.alCambiarEstado = () => UI.pintarConexion($('#conexion'));
@@ -724,16 +996,26 @@ async function iniciar() {
     vista = btn.dataset.vista;
     marcarTab(); render();
   }));
-  const bind = (sel, campo) => $(sel).addEventListener('input', e => {
-    filtros[campo] = e.target.value; render();
+  const bind = (sel, campoF) => $(sel).addEventListener('input', e => {
+    filtros[campoF] = e.target.value; render();
   });
   bind('#f-estado', 'estado'); bind('#f-urgencia', 'urgencia');
-  bind('#f-naturaleza', 'naturaleza'); bind('#f-persona', 'persona'); bind('#f-texto', 'texto');
+  bind('#f-origen', 'origen'); bind('#f-persona', 'persona'); bind('#f-texto', 'texto');
   $('#f-limpiar').addEventListener('click', () => {
-    filtros = { estado: '', urgencia: '', naturaleza: '', persona: '', texto: '' };
+    filtros = { estado: '', urgencia: '', origen: '', persona: '', texto: '' };
     poblarFiltros(); render();
   });
   if (!window.UNARCHIVO) UI.botonTema($('#btn-tema'), render);
+
+  if (!oyentesGlobales) {
+    oyentesGlobales = true;
+    let t;
+    addEventListener('resize', () => {
+      if (window.UNARCHIVO && window.SECCION !== 'spt') return;
+      clearTimeout(t);
+      t = setTimeout(() => (window.REDIBUJAR || []).forEach(f => f()), 150);
+    });
+  }
 
   poblarFiltros();
   render();

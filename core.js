@@ -34,24 +34,13 @@ const Datos = {
   /* --------------------------------------------------------------- *
    * Conexión
    * --------------------------------------------------------------- */
+  /* La conexión la entrega el servidor (Replit → config.js). No se pide ni se
+     guarda en el navegador: así nadie tiene que pegar claves a mano. */
   conexionGuardada() {
     if (global.SUPABASE_URL && global.SUPABASE_ANON_KEY) {
-      return { url: global.SUPABASE_URL, clave: global.SUPABASE_ANON_KEY, origen: 'servidor' };
+      return { url: global.SUPABASE_URL, clave: global.SUPABASE_ANON_KEY };
     }
-    try {
-      const c = JSON.parse(localStorage.getItem(CLAVE_CONEXION) || 'null');
-      if (c && c.url && c.clave) return { ...c, origen: 'navegador' };
-    } catch (e) { /* sin almacenamiento */ }
     return null;
-  },
-
-  guardarConexion(url, clave) {
-    try { localStorage.setItem(CLAVE_CONEXION, JSON.stringify({ url: url.trim(), clave: clave.trim() })); }
-    catch (e) { /* sin almacenamiento */ }
-  },
-
-  olvidarConexion() {
-    try { localStorage.removeItem(CLAVE_CONEXION); } catch (e) { /* nada */ }
   },
 
   anunciar(estado, mensaje) {
@@ -273,6 +262,168 @@ const UI = {
   }
 };
 
+/* ------------------------------------------------------------------ *
+ * Gráficos propios: SVG a mano, sin librerías.
+ * Barras finas, extremo redondeado de 4px, separación de 2px entre marcas,
+ * etiqueta de valor en la punta y lectura al pasar el cursor.
+ * ------------------------------------------------------------------ */
+const Graficos = {
+  ns: 'http://www.w3.org/2000/svg',
+
+  nodo(tag, attrs = {}) {
+    const n = document.createElementNS(this.ns, tag);
+    for (const k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    return n;
+  },
+
+  texto(attrs, contenido) {
+    const t = this.nodo('text', attrs);
+    t.textContent = contenido;
+    return t;
+  },
+
+  /* Barra con la punta redondeada y la base recta. */
+  camino(x, y, w, h, r = 4) {
+    const rr = Math.max(0, Math.min(r, w));
+    return `M${x},${y} H${x + w - rr} A${rr},${rr} 0 0 1 ${x + w},${y + rr} ` +
+           `V${y + h - rr} A${rr},${rr} 0 0 1 ${x + w - rr},${y + h} H${x} Z`;
+  },
+
+  tooltip(nodo, titulo, filas) {
+    const caja = document.getElementById('tt');
+    if (!caja) return;
+    const mostrar = ev => {
+      caja.innerHTML = '';
+      const b = document.createElement('b');
+      b.textContent = titulo;
+      caja.appendChild(b);
+      filas.forEach(f => {
+        const d = document.createElement('div');
+        const s = document.createElement('span');
+        s.textContent = f[0] + ': ';
+        d.appendChild(s);
+        d.appendChild(document.createTextNode(f[1]));
+        caja.appendChild(d);
+      });
+      caja.hidden = false;
+      const r = caja.getBoundingClientRect();
+      caja.style.left = Math.min(ev.clientX + 14, innerWidth - r.width - 8) + 'px';
+      caja.style.top = Math.max(8, ev.clientY - r.height - 12) + 'px';
+    };
+    nodo.addEventListener('pointermove', mostrar);
+    nodo.addEventListener('pointerleave', () => { caja.hidden = true; });
+    nodo.addEventListener('focus', () => {
+      const r = nodo.getBoundingClientRect();
+      mostrar({ clientX: r.x + 60, clientY: r.y + 26 });
+    });
+    nodo.addEventListener('blur', () => { caja.hidden = true; });
+  },
+
+  /* Barras horizontales. datos: [{etiqueta, valor, color, detalle:[[k,v]], sufijo}] */
+  barras(datos, ancho, opciones = {}) {
+    const o = Object.assign({ max: null, sufijo: '%', filaH: 26, etiquetaW: null,
+      umbrales: [], color: 'var(--ramp-3)' }, opciones);
+    const filaH = o.filaH, barraH = Math.min(16, filaH - 10), topo = o.umbrales.length ? 20 : 4, base = 4;
+    const etiquetaW = o.etiquetaW || Math.max(96, Math.min(200, Math.round(ancho * 0.32)));
+    const valorW = 44;
+    const x0 = etiquetaW + 8;
+    const escalaW = Math.max(40, ancho - x0 - valorW - 4);
+    const alto = topo + datos.length * filaH + base;
+    const max = o.max || Math.max(1, ...datos.map(d => d.valor));
+
+    const svg = this.nodo('svg', { class: 'chart', width: ancho, height: alto,
+      viewBox: `0 0 ${ancho} ${alto}`, role: 'img', 'aria-label': o.titulo || 'Gráfico de barras' });
+    const X = v => x0 + (v / max) * escalaW;
+
+    o.umbrales.forEach((u, i) => {
+      svg.appendChild(this.nodo('line', { x1: X(u), x2: X(u), y1: topo - 8, y2: alto - base,
+        stroke: 'var(--grid)', 'stroke-width': 1 }));
+      if (escalaW / max * (o.umbrales[1] ? o.umbrales[1] - o.umbrales[0] : max) >= 24)
+        svg.appendChild(this.texto({ x: X(u), y: topo - 11, 'text-anchor': i === o.umbrales.length - 1 ? 'end' : 'middle',
+          fill: 'var(--ink-muted)', 'font-size': 10 }, u + o.sufijo));
+    });
+
+    datos.forEach((d, i) => {
+      const y = topo + i * filaH;
+      const yb = y + (filaH - barraH) / 2;
+      svg.appendChild(this.texto({ x: etiquetaW, y: y + filaH / 2 + 4, 'text-anchor': 'end',
+        fill: 'var(--ink-2)', 'font-size': 12 },
+        UI.recorta(d.etiqueta, Math.floor(etiquetaW / 6.4))));
+      svg.appendChild(this.nodo('rect', { x: x0, y: yb, width: escalaW, height: barraH, rx: 4,
+        fill: 'var(--track)' }));
+      const w = Math.max(0, (d.valor / max) * escalaW);
+      if (w > 0.5) svg.appendChild(this.nodo('path', { d: this.camino(x0, yb, w, barraH),
+        fill: d.color || o.color }));
+      svg.appendChild(this.texto({ x: ancho - 2, y: y + filaH / 2 + 4, 'text-anchor': 'end',
+        fill: 'var(--ink)', 'font-size': 12, 'font-weight': 600 },
+        (d.texto !== undefined ? d.texto : d.valor + o.sufijo)));
+
+      const hit = this.nodo('rect', { x: 0, y, width: ancho, height: filaH, fill: 'transparent', tabindex: 0 });
+      this.tooltip(hit, d.etiqueta, d.detalle || [['Valor', d.valor + o.sufijo]]);
+      svg.appendChild(hit);
+    });
+    return svg;
+  },
+
+  /* Barra 100% apilada. segmentos: [{etiqueta, valor, color}] */
+  apilada(segmentos, ancho, alto = 26) {
+    const svg = this.nodo('svg', { class: 'chart', width: ancho, height: alto + 4,
+      viewBox: `0 0 ${ancho} ${alto + 4}`, role: 'img', 'aria-label': 'Reparto' });
+    const utiles = segmentos.filter(s => s.valor > 0);
+    const total = utiles.reduce((a, s) => a + s.valor, 0) || 1;
+    let x = 0;
+    utiles.forEach((s, i) => {
+      const hueco = i < utiles.length - 1 ? 2 : 0;
+      const w = Math.max(0, (s.valor / total) * ancho - hueco);
+      const g = this.nodo('g', { tabindex: 0 });
+      g.appendChild(this.nodo('rect', { x, y: 2, width: w, height: alto, rx: 4, fill: s.color }));
+      if (w > 28) g.appendChild(this.texto({ x: x + w / 2, y: alto / 2 + 7, 'text-anchor': 'middle',
+        'font-size': 11.5, 'font-weight': 600, fill: s.tinta || '#fff' }, String(s.valor)));
+      this.tooltip(g, s.etiqueta, [['Cantidad', String(s.valor)],
+        ['Del total', Math.round(s.valor / total * 100) + '%']]);
+      svg.appendChild(g);
+      x += w + hueco;
+    });
+    return svg;
+  },
+
+  leyenda(items) {
+    const cont = UI.el('div', { class: 'legend' });
+    items.forEach(it => cont.appendChild(UI.el('span', {}, [
+      UI.el('i', { style: `background:${it.color}` }),
+      document.createTextNode(it.etiqueta)
+    ])));
+    return cont;
+  },
+
+  /* Tarjeta con gráfico y su tabla equivalente, para que ningún dato quede
+     sólo en el color. */
+  tarjeta(titulo, sub, dibujar, tabla) {
+    const card = UI.el('div', { class: 'card compacta' });
+    const btn = UI.el('button', { class: 'btn btn-ghost btn-sm', type: 'button', text: 'Tabla' });
+    card.appendChild(UI.el('div', { class: 'toolbar' }, [
+      UI.el('div', {}, [UI.el('h2', { text: titulo }), UI.el('div', { class: 'sub', text: sub })]),
+      UI.el('span', { class: 'count' }), btn
+    ]));
+    const caja = UI.el('div', {});
+    card.appendChild(caja);
+    let modo = false;
+    const pintar = () => {
+      caja.innerHTML = '';
+      if (modo && tabla) { caja.appendChild(tabla()); return; }
+      const ancho = Math.max(260, caja.clientWidth || card.clientWidth - 30);
+      const r = dibujar(ancho);
+      (Array.isArray(r) ? r : [r]).forEach(n => n && caja.appendChild(n));
+    };
+    btn.addEventListener('click', () => { modo = !modo; btn.textContent = modo ? 'Gráfico' : 'Tabla'; pintar(); });
+    if (!tabla) btn.remove();
+    requestAnimationFrame(pintar);
+    (global.REDIBUJAR = global.REDIBUJAR || []).push(pintar);
+    return card;
+  }
+};
+
+global.Graficos = Graficos;
 global.UI = UI;
 global.Datos = Datos;
 global.Modelo = Modelo;

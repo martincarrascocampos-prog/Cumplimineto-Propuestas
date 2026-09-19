@@ -87,16 +87,22 @@ create table if not exists integrantes (
   notas  text
 );
 
+-- Enlaces a carpetas de Drive, cronogramas y documentos. Si 'proyecto' viene
+-- vacío, el enlace es general de la secretaría.
 create table if not exists enlaces (
-  id     text primary key,
-  nombre text,
-  url    text
+  id       text primary key,
+  nombre   text,
+  url      text,
+  proyecto text
 );
+
+alter table enlaces add column if not exists proyecto text;
 
 create index if not exists pasos_por_proyecto on pasos (proyecto);
 create index if not exists hitos_por_proyecto on hitos (proyecto);
 create index if not exists obs_por_codigo     on observaciones (codigo);
 create index if not exists proy_por_propuesta on proyectos (propuesta);
+create index if not exists enlaces_por_proyecto on enlaces (proyecto);
 
 -- Acceso: por ahora, quien tenga la URL y la clave pública puede leer y escribir.
 -- Sirve para partir con el equipo. Cuando quieran cuentas con contraseña, se
