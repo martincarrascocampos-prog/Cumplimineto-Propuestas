@@ -8,8 +8,9 @@
  *   resumen    — a la coordinación, los viernes: cómo va el programa y quién está cargado
  *   urgencias  — a quien lleva un proyecto urgente que está atrasado
  *
- * Lee de Supabase con la llave secreta (sólo servidor) y envía con Resend.
- * Sin llaves configuradas, igual arma los correos: sirven para la vista previa.
+ * Lee de Supabase con la llave secreta (sólo servidor) y envía por Gmail o por
+ * Resend, según lo que esté configurado. Sin nada configurado igual arma los
+ * correos: sirven para la vista previa.
  */
 'use strict';
 
@@ -267,10 +268,43 @@ function construir(tipo, d, opciones = {}) {
  * Envío
  * ------------------------------------------------------------------ */
 async function enviar(correos) {
+  if (!correos.length) return { enviados: 0, resultados: [] };
+  if (process.env.GMAIL_USUARIO && process.env.GMAIL_APP_PASSWORD) return enviarPorGmail(correos);
+  if (process.env.RESEND_API_KEY) return enviarPorResend(correos);
+  return { enviados: 0, error: 'No hay forma de enviar configurada: falta GMAIL_USUARIO + ' +
+    'GMAIL_APP_PASSWORD, o RESEND_API_KEY.' };
+}
+
+/* Gmail: sale desde la cuenta de la FECh, sin dominio propio ni verificaciones.
+   Necesita una "contraseña de aplicación" de Google, no la contraseña normal. */
+async function enviarPorGmail(correos) {
+  let nodemailer;
+  try { nodemailer = require('nodemailer'); }
+  catch (e) { return { enviados: 0, error: 'Falta instalar nodemailer (npm install nodemailer).' }; }
+
+  const usuario = process.env.GMAIL_USUARIO;
+  const transporte = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: usuario, pass: process.env.GMAIL_APP_PASSWORD }
+  });
+  const remitente = process.env.CORREO_REMITENTE || `SPT · Participación <${usuario}>`;
+
+  const resultados = [];
+  for (const c of correos) {
+    try {
+      await transporte.sendMail({ from: remitente, to: c.para, subject: c.asunto, html: c.html });
+      resultados.push({ para: c.para, ok: true });
+    } catch (e) {
+      resultados.push({ para: c.para, ok: false, detalle: e.message });
+    }
+  }
+  return { via: 'gmail', enviados: resultados.filter(r => r.ok).length, resultados };
+}
+
+/* Resend: conviene cuando la FECh tiene dominio propio verificado. */
+async function enviarPorResend(correos) {
   const llave = process.env.RESEND_API_KEY;
   const remitente = process.env.CORREO_REMITENTE || 'SPT FECh <onboarding@resend.dev>';
-  if (!llave) return { enviados: 0, error: 'Falta RESEND_API_KEY: no se envió nada.' };
-
   const resultados = [];
   for (const c of correos) {
     const r = await fetch('https://api.resend.com/emails', {
@@ -280,7 +314,7 @@ async function enviar(correos) {
     });
     resultados.push({ para: c.para, ok: r.ok, detalle: r.ok ? '' : await r.text() });
   }
-  return { enviados: resultados.filter(r => r.ok).length, resultados };
+  return { via: 'resend', enviados: resultados.filter(r => r.ok).length, resultados };
 }
 
 module.exports = { leerBase, construir, enviar };

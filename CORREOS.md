@@ -30,25 +30,48 @@ Muestra exactamente lo que recibiría cada persona, **sin enviar nada**. Cambia 
 
 ## Encender el envío
 
-### 1. Una cuenta para enviar
+### 1. Desde qué correo salen
 
-**resend.com** — gratis hasta 3.000 correos al mes, que es de sobra. Crea la cuenta y copia la
-**API key**.
+Dos caminos. El sistema usa Gmail si está configurado; si no, Resend.
 
-Para que los correos salgan con dirección de la FECh y no de prueba, hay que verificar un dominio
-en Resend. Mientras tanto salen desde `onboarding@resend.dev`, que funciona igual.
+#### Opción A — Gmail de la FECh (recomendada si no tienen dominio propio)
+
+Los correos salen desde la cuenta de Gmail de la Federación, con esa dirección de remitente.
+No hay que verificar dominios ni nada.
+
+1. Entra a la **cuenta de Google de la FECh** → *Gestionar tu cuenta* → **Seguridad**.
+2. Activa la **verificación en dos pasos** si no está (es requisito).
+3. Busca **Contraseñas de aplicaciones**, crea una llamada `SPT` y copia los 16 caracteres.
+   **No es la contraseña normal de la cuenta**: es una clave aparte que se puede revocar.
+4. Límite: 100 correos al día con Gmail normal, 1.500 con Workspace. La secretaría manda
+   unos 30 a la semana.
+
+#### Opción B — Resend (si la FECh tiene dominio propio)
+
+1. Crea la cuenta en **resend.com**, gratis hasta 3.000 correos al mes.
+2. **Sin dominio verificado, Resend sólo deja enviar a tu propia dirección**, la de la cuenta.
+   Sirve para probar, no para el equipo.
+3. Para mandarle a todos hay que verificar un dominio (agregar unos registros DNS). Después
+   los correos salen desde algo como `spt@fech.cl`, que se ve mejor.
 
 ### 2. Los secretos en Replit
+
+Siempre estos dos:
 
 | Key | Value |
 |---|---|
 | `SUPABASE_SECRET_KEY` | la **Secret key** de Supabase (*Project Settings → API Keys → Secret keys*) |
-| `RESEND_API_KEY` | la clave de Resend |
-| `CORREO_REMITENTE` | `SPT FECh <spt@tudominio.cl>`, o se omite para usar el de prueba |
 | `CORREOS_TOKEN` | una palabra secreta que inventes, para que nadie más dispare los envíos |
 
-> La *Secret key* de Supabase va **solo acá**, en el servidor. Nunca en la página.
-> Es la única llave que puede leer la base cuando el acceso esté cerrado con cuentas.
+Y según el camino elegido:
+
+| Opción | Keys |
+|---|---|
+| Gmail | `GMAIL_USUARIO` (la dirección completa) y `GMAIL_APP_PASSWORD` (los 16 caracteres) |
+| Resend | `RESEND_API_KEY`, y `CORREO_REMITENTE` si ya tienes dominio verificado |
+
+> La *Secret key* de Supabase y la contraseña de aplicación van **solo acá**, en el servidor.
+> Nunca en la página ni en GitHub.
 
 ### 3. Programar los horarios
 
@@ -80,7 +103,9 @@ La dirección de envío responde con un resumen:
 { "tipo": "semanal", "preparados": 4, "enviados": 4 }
 ```
 
-Si dice `"error": "Falta RESEND_API_KEY"`, el correo se armó pero no salió: falta el secreto.
+El campo `via` dice por dónde salieron: `gmail` o `resend`.
+Si responde que no hay forma de enviar configurada, el correo se armó pero no salió: faltan los
+secretos del paso 2.
 Si `preparados` es 0, no había nada que contar — es lo esperado en una semana sin pendientes.
 
 ---
