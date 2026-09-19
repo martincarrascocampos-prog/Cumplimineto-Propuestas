@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPT · Secretaría de Participación</title>
+<meta name="description" content="Sistema de Planificación de Trabajo de la Secretaría de Participación: proyectos, pasos, encargados, plazos y agenda, conectado al programa FECh 2026.">
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>
+      <b>SPT · Participación</b>
+      <span>Sistema de Planificación de Trabajo</span>
+    </span>
+  </div>
+  <div class="top-actions">
+    <a class="salto" href="index.html">← Conectómetro</a>
+    <span class="conexion" id="conexion" title="Dónde se están guardando los datos"><i></i><span>…</span></span>
+    <button class="btn btn-ghost" id="btn-tema" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Secciones">
+  <button class="tab" role="tab" data-vista="tablero" aria-selected="true">Tablero</button>
+  <button class="tab" role="tab" data-vista="proyectos" aria-selected="false">Proyectos</button>
+  <button class="tab" role="tab" data-vista="agenda" aria-selected="false">Agenda</button>
+  <button class="tab" role="tab" data-vista="equipo" aria-selected="false">Equipo</button>
+  <button class="tab" role="tab" data-vista="conexion" aria-selected="false">Conexión</button>
+</nav>
+
+<section class="filters" id="filtros">
+  <label class="field"><span>Estado</span><select id="f-estado"></select></label>
+  <label class="field"><span>Urgencia</span><select id="f-urgencia"></select></label>
+  <label class="field"><span>Naturaleza</span><select id="f-naturaleza"></select></label>
+  <label class="field"><span>Encargado</span><select id="f-persona"></select></label>
+  <label class="field grow"><span>Buscar</span><input type="search" id="f-texto" placeholder="Proyecto o paso"></label>
+  <button class="btn btn-ghost" id="f-limpiar">Limpiar</button>
+</section>
+
+<main id="vista"></main>
+<div id="tt" class="tt" hidden></div>
+<footer>SPT v3.1 · Secretaría de Participación — FECh 2026</footer>
+
+<script src="config.js" onerror="void 0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="core.js"></script>
+<script src="data.js"></script>
+<script src="spt-data.js"></script>
+<script src="spt.js"></script>
+</body>
+</html>

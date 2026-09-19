@@ -6,7 +6,6 @@
 /* ------------------------------------------------------------------ *
  * 1. Reglas de negocio
  * ------------------------------------------------------------------ */
-const CLAVE = 'conectometro/v2';
 const UMBRALES = { media: 50, minimo: 70, ideal: 80, logro: 90 };
 
 const ESTADOS = [
@@ -83,7 +82,11 @@ const colorEquipo = eq => {
 };
 
 /* ------------------------------------------------------------------ *
- * 2. Estado y persistencia
+ * 2. Estado: vistas sobre la base compartida
+ *
+ * Una propuesta del programa es un título fijo (data.js) más su seguimiento
+ * (base de datos). Sus etapas son los pasos del proyecto del SPT: una sola
+ * tabla para las dos secciones, para que nunca queden descuadradas.
  * ------------------------------------------------------------------ */
 let estado = null;
 let filtros = { equipo: '', eje: '', estado: '', texto: '' };
@@ -91,53 +94,111 @@ let vista = 'panel';
 let perfil = PERFILES[0];
 let redibujables = [];
 
-function inicial() {
+/* Una etapa es un paso del SPT visto con los nombres del Conectómetro. */
+function vistaEtapa(paso) {
+  const v = { _paso: paso };
+  Object.defineProperties(v, {
+    t:  { get: () => paso.descripcion,
+          set: x => { paso.descripcion = x; Datos.guardar('pasos', paso); } },
+    ok: { get: () => paso.estado === 'Completado',
+          set: x => { paso.estado = x ? 'Completado' : 'Pendiente'; Datos.guardar('pasos', paso); } },
+    f:  { get: () => paso.plazo || '',
+          set: x => { paso.plazo = x; Datos.guardar('pasos', paso); } }
+  });
+  return v;
+}
+
+function vistaPropuesta(base) {
+  const p = { c: base[0], eje: base[1], sub: base[2], t: base[3], d: base[5], _equipoBase: base[4] };
+
+  /* La fila de seguimiento se crea recién cuando alguien cambia algo: leer no
+     debe ensuciar la base con 102 filas vacías. El id se deriva del código,
+     así dos personas editando a la vez no crean filas duplicadas. */
+  const fila = () => Datos.todo('seguimiento').find(f => f.codigo === p.c) || null;
+  const leer = () => fila() || { codigo: p.c, equipo: p._equipoBase, estado: 'no_iniciada', avance: 0, plazo: '' };
+  const escribir = (campo, valor) => {
+    const s = fila() || { id: 'seg:' + p.c, codigo: p.c, equipo: p._equipoBase,
+      estado: 'no_iniciada', avance: 0, plazo: '' };
+    s[campo] = valor;
+    s.actualizado = new Date().toISOString();
+    Datos.guardar('seguimiento', s);
+  };
+
+  Object.defineProperties(p, {
+    eq:     { get: () => leer().equipo || p._equipoBase, set: v => escribir('equipo', v) },
+    estado: { get: () => leer().estado || 'no_iniciada', set: v => escribir('estado', v) },
+    avance: { get: () => Number(leer().avance) || 0,     set: v => escribir('avance', v) },
+    fecha:  { get: () => leer().plazo || '',             set: v => escribir('plazo', v) },
+    etapas: { get: () => Modelo.etapasDe(p.c).map(vistaEtapa) },
+    obs:    { get: () => Datos.todo('observaciones').filter(o => o.codigo === p.c)
+                              .sort((a, b) => String(a.fecha).localeCompare(String(b.fecha))) }
+  });
+  return p;
+}
+
+function construir() {
+  if (!Datos.todo('equipos').length) EQUIPOS.forEach(e => Datos.guardar('equipos', { ...e }));
   return {
-    version: 2,
-    actualizado: new Date().toISOString(),
     ejes: EJES.map(e => ({ ...e })),
-    equipos: EQUIPOS.map(e => ({ ...e })),
-    propuestas: PROPUESTAS_BASE.map(p => ({
-      c: p[0], eje: p[1], sub: p[2], t: p[3], eq: p[4], d: p[5],
-      estado: 'no_iniciada', avance: 0, fecha: '', etapas: [], obs: []
-    }))
+    equipos: Datos.todo('equipos').slice()
+      .sort((a, b) => (a.color || 0) - (b.color || 0)),
+    propuestas: PROPUESTAS_BASE.map(vistaPropuesta)
   };
 }
 
-function cargar() {
-  try {
-    const crudo = localStorage.getItem(CLAVE);
-    if (crudo) {
-      const d = JSON.parse(crudo);
-      if (d && Array.isArray(d.propuestas) && d.propuestas.length) return migrar(d);
-    }
-  } catch (e) { /* almacenamiento bloqueado: seguimos en memoria */ }
-  return inicial();
+/* Las escrituras ya viajan solas en cada cambio; guardar() queda para los
+   lugares que tocan filas sueltas (equipos, por ejemplo). */
+function guardar(tabla, fila) {
+  if (tabla && fila) Datos.guardar(tabla, fila);
 }
 
-/* Completa lo que falte en datos guardados o importados de versiones previas. */
-function migrar(d) {
-  const texto = {};
-  PROPUESTAS_BASE.forEach(p => { texto[p[0]] = p; });
-  d.ejes = (d.ejes && d.ejes.length) ? d.ejes : EJES.map(e => ({ ...e }));
-  d.equipos = (d.equipos && d.equipos.length) ? d.equipos : EQUIPOS.map(e => ({ ...e }));
-  d.propuestas.forEach(p => {
-    const base = texto[p.c];
-    if (base && !p.d) { p.d = base[5]; p.sub = p.sub || base[2]; }
-    if (base && !equipoDeLista(d.equipos, p.eq)) p.eq = base[4];
-    if (!Array.isArray(p.etapas)) p.etapas = [];
-    if (!Array.isArray(p.obs)) p.obs = [];
-    delete p.resp;
-    delete p.nota;
+/* --- etapas: crear, agregar y borrar pasan por el SPT --------------------- */
+function agregarEtapa(p, texto) {
+  const pr = Modelo.proyectoPara(p);
+  return Modelo.agregarPaso(pr.id, texto);
+}
+
+function borrarEtapa(p, i) {
+  const pasos = Modelo.etapasDe(p.c);
+  const paso = pasos[i];
+  if (!paso) return;
+  Datos.borrar('pasos', paso.id);
+  Modelo.pasosDe(paso.proyecto).forEach((x, k) => {
+    if (x.n !== k + 1) { x.n = k + 1; Datos.guardar('pasos', x); }
   });
-  return d;
 }
-const equipoDeLista = (lista, id) => lista.some(e => e.id === id);
 
-function guardar() {
-  estado.actualizado = new Date().toISOString();
-  try { localStorage.setItem(CLAVE, JSON.stringify(estado)); }
-  catch (e) { /* sin persistencia: el prototipo sigue en memoria */ }
+function agregarObservacion(p, texto) {
+  Datos.guardar('observaciones', { id: uid(), codigo: p.c, fecha: hoy(), texto });
+}
+
+/* Trae lo que se haya cargado en la versión anterior, que vivía sólo en este
+   navegador, para no perder el avance ya registrado. */
+function importarVersionAnterior() {
+  let viejo = null;
+  try { viejo = JSON.parse(localStorage.getItem('conectometro/v2') || 'null'); } catch (e) { return 0; }
+  if (!viejo || !Array.isArray(viejo.propuestas)) return 0;
+  if (Datos.todo('seguimiento').length || Datos.todo('proyectos').length) return 0;
+
+  let n = 0;
+  viejo.propuestas.forEach(v => {
+    const tieneAlgo = (v.estado && v.estado !== 'no_iniciada') || v.avance || v.fecha ||
+      (v.etapas || []).length || (v.obs || []).length;
+    if (!tieneAlgo) return;
+    n++;
+    Datos.guardar('seguimiento', { id: uid(), codigo: v.c, equipo: v.eq, estado: v.estado || 'no_iniciada',
+      avance: Number(v.avance) || 0, plazo: v.fecha || '' });
+    (v.obs || []).forEach(o => Datos.guardar('observaciones',
+      { id: uid(), codigo: v.c, fecha: o.f || hoy(), texto: o.t || '' }));
+    if ((v.etapas || []).length) {
+      const base = PROPUESTAS_BASE.find(b => b[0] === v.c);
+      const pr = Modelo.crearProyectoDesde({ c: v.c, t: base ? base[3] : v.c });
+      v.etapas.forEach((e, i) => Datos.guardar('pasos', { id: uid(), proyecto: pr.id, n: i + 1,
+        descripcion: e.t || '', plazo: e.f || '',
+        estado: e.ok ? 'Completado' : 'Pendiente', encargados: [] }));
+    }
+  });
+  return n;
 }
 
 /* ------------------------------------------------------------------ *
@@ -454,7 +515,7 @@ function filaEtapa(p, i, editable, alMarcar, alReconstruir) {
   fila.appendChild(fecha);
   if (editable) fila.appendChild(el('button', { class: 'x', type: 'button', text: '✕',
     title: 'Eliminar etapa',
-    onclick: () => { p.etapas.splice(i, 1); sincronizarEstado(p); guardar(); alReconstruir(); } }));
+    onclick: () => { borrarEtapa(p, i); sincronizarEstado(p); alReconstruir(); } }));
   pintarFila();
   return fila;
 }
@@ -462,7 +523,8 @@ function filaEtapa(p, i, editable, alMarcar, alReconstruir) {
 /* Agrega la estructura tipo a una propuesta que aún no tiene etapas. */
 function aplicarPlantilla(p) {
   if (conEtapas(p)) return false;
-  p.etapas = PLANTILLA_ETAPAS.map(t => ({ t, ok: false, f: '' }));
+  const pr = Modelo.proyectoPara(p);
+  PLANTILLA_ETAPAS.forEach(t => Modelo.agregarPaso(pr.id, t));
   return true;
 }
 
@@ -575,9 +637,9 @@ function abrirPropuesta(p) {
     const agregar = () => {
       const t = inEtapa.value.trim();
       if (!t) return;
-      p.etapas.push({ t, ok: false, f: '' });
+      agregarEtapa(p, t);
       inEtapa.value = '';
-      guardar(); pintarEtapas(); refrescar();
+      pintarEtapas(); refrescar();
     };
     inEtapa.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
     bloqueEtapas.appendChild(el('div', { class: 'fila', style: 'margin-top:10px' }, [
@@ -585,7 +647,7 @@ function abrirPropuesta(p) {
     ]));
     if (!p.etapas.length) bloqueEtapas.appendChild(el('div', { style: 'margin-top:8px' },
       el('button', { class: 'btn btn-sm', type: 'button', text: 'Usar estructura tipo (5 etapas)',
-        onclick: () => { aplicarPlantilla(p); guardar(); pintarEtapas(); refrescar(); } })));
+        onclick: () => { aplicarPlantilla(p); pintarEtapas(); refrescar(); } })));
   }
   c.appendChild(bloqueEtapas);
 
@@ -599,13 +661,12 @@ function abrirPropuesta(p) {
       return;
     }
     p.obs.slice().reverse().forEach(o => {
-      const i = p.obs.indexOf(o);
       const bloque = el('div', { class: 'obs' }, [
         el('div', { style: 'flex:1' }, [el('time', { text: o.f }), el('div', { text: o.t })])
       ]);
       if (editable) bloque.appendChild(el('button', { class: 'x', type: 'button', text: '✕',
         title: 'Eliminar observación',
-        onclick: () => { p.obs.splice(i, 1); guardar(); pintarObs(); } }));
+        onclick: () => { Datos.borrar('observaciones', o.id); pintarObs(); } }));
       listaObs.appendChild(bloque);
     });
   };
@@ -621,9 +682,9 @@ function abrirPropuesta(p) {
       el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar observación', onclick: () => {
         const t = ta.value.trim();
         if (!t) return;
-        p.obs.push({ f: hoy(), t });
+        agregarObservacion(p, t);
         ta.value = '';
-        guardar(); pintarObs();
+        pintarObs();
       } })
     ]));
   }
@@ -888,7 +949,7 @@ function vistaEquipos(raiz) {
       const nivel = nivelDe(d.cumplimiento);
       const inLider = el('input', { type: 'text', value: eq.lider || '',
         placeholder: 'Nombre de quien coordina', disabled: editable ? null : 'disabled' });
-      inLider.addEventListener('change', () => { eq.lider = inLider.value; guardar(); });
+      inLider.addEventListener('change', () => { eq.lider = inLider.value; guardar('equipos', eq); });
       return el('div', { class: 'kpi', style: 'padding:14px' }, [
         el('div', { style: 'display:flex; align-items:center; gap:8px; margin-bottom:6px' }, [
           el('span', { class: 'dot', style: `background:${d.color}` }),
@@ -973,7 +1034,7 @@ function vistaProyecto(raiz) {
       if (!confirm(`Se agregarán las 5 etapas tipo a ${sinEstructura.length} propuestas sin estructura ` +
         `(las que están filtradas ahora). ¿Continuar?`)) return;
       sinEstructura.forEach(aplicarPlantilla);
-      guardar(); render();
+      render();
     } }));
 
   raiz.appendChild(el('div', { class: 'card' }, [
@@ -1056,8 +1117,8 @@ function nodoPropuesta(p, editable, alMarcar) {
       const agregar = () => {
         const t = inEtapa.value.trim();
         if (!t) return;
-        p.etapas.push({ t, ok: false, f: '' });
-        guardar(); pintar(); if (alMarcar) alMarcar();
+        agregarEtapa(p, t);
+        pintar(); if (alMarcar) alMarcar();
       };
       inEtapa.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
       const acciones = el('div', { class: 'fila', style: 'margin-top:8px' }, [
@@ -1065,7 +1126,7 @@ function nodoPropuesta(p, editable, alMarcar) {
       ]);
       if (!conEtapas(p)) acciones.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
         text: 'Estructura tipo', title: 'Agrega las 5 etapas tipo',
-        onclick: () => { aplicarPlantilla(p); guardar(); pintar(); if (alMarcar) alMarcar(); } }));
+        onclick: () => { aplicarPlantilla(p); pintar(); if (alMarcar) alMarcar(); } }));
       etapas.appendChild(acciones);
     }
   };
@@ -1280,7 +1341,9 @@ function vistaDatos(raiz) {
 
   const acciones = el('div', { class: 'toolbar' }, [
     el('button', { class: 'btn btn-primary', type: 'button', text: 'Exportar JSON', onclick: () =>
-      descargar('conectometro.json', JSON.stringify(estado, null, 2), 'application/json') }),
+      descargar('conectometro.json', JSON.stringify(
+        { version: 3, exportado: new Date().toISOString(), tablas: Datos.tablas }, null, 2),
+        'application/json') }),
     el('button', { class: 'btn', type: 'button', text: 'Exportar CSV (Excel)', onclick: () =>
       descargar('conectometro.csv', aCSV(), 'text/csv;charset=utf-8') })
   ]);
@@ -1293,10 +1356,15 @@ function vistaDatos(raiz) {
     lector.onload = () => {
       try {
         const d = JSON.parse(lector.result);
-        if (!d || !Array.isArray(d.propuestas)) throw new Error('formato');
-        estado = migrar(d);
-        guardar(); render();
-        alert('Datos importados: ' + d.propuestas.length + ' propuestas.');
+        const tablas = d.tablas || d;
+        let n = 0;
+        ['equipos', 'seguimiento', 'observaciones', 'proyectos', 'pasos', 'hitos',
+         'agenda', 'integrantes', 'enlaces'].forEach(t => {
+          (tablas[t] || []).forEach(fila => { Datos.guardar(t, fila); n++; });
+        });
+        estado = construir();
+        render();
+        alert('Datos importados: ' + n + ' registros.');
       } catch (e) { alert('El archivo no tiene el formato esperado.'); }
     };
     lector.readAsText(f);
@@ -1304,11 +1372,14 @@ function vistaDatos(raiz) {
   if (admin) {
     acciones.appendChild(el('button', { class: 'btn', type: 'button', text: 'Importar JSON',
       onclick: () => entrada.click() }));
-    acciones.appendChild(el('button', { class: 'btn', type: 'button', text: 'Reiniciar al programa original',
+    acciones.appendChild(el('button', { class: 'btn', type: 'button', text: 'Borrar todo el avance',
       onclick: () => {
-        if (confirm('Se borrará todo el avance, las etapas y las observaciones, y se volverá a las 102 propuestas del programa. ¿Continuar?')) {
-          estado = inicial(); guardar(); render();
-        }
+        if (!confirm('Se borrará el avance, las etapas, los proyectos y las observaciones, y se volverá ' +
+          'a las 102 propuestas del programa sin tocar. ¿Continuar?')) return;
+        ['seguimiento', 'observaciones', 'pasos', 'hitos', 'proyectos'].forEach(t =>
+          Datos.todo(t).slice().forEach(f => Datos.borrar(t, f.id)));
+        estado = construir();
+        render();
       } }));
   }
   acciones.appendChild(entrada);
@@ -1333,6 +1404,20 @@ function vistaDatos(raiz) {
       el('p', { text: 'Umbrales: bajo la media <50% · media 50% · mínimo 70% · ideal 80% · logro 90%.' })
     ]),
     el('div', { style: 'margin-top:12px' }, tablaResumen([{ nombre: 'Programa completo', ...r }], 'Alcance'))
+  ]));
+
+  raiz.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Dónde se están guardando los datos' }),
+    el('div', { class: 'sub', text: Datos.modo === 'supabase' ? 'Base compartida' : 'Sólo este navegador' }),
+    el('div', { class: 'note' }, [
+      el('p', { text: Datos.modo === 'supabase'
+        ? 'Conectado a la base compartida: lo que edites lo ve todo el equipo.'
+        : 'Los datos viven en este navegador. Para que el equipo vea lo mismo, conecta la base ' +
+          'compartida desde el SPT, en su pestaña Conexión.' }),
+      Datos.mensaje ? el('p', { text: Datos.mensaje }) : null
+    ].filter(Boolean)),
+    el('div', { class: 'toolbar', style: 'margin-top:12px' },
+      el('a', { class: 'btn', href: 'spt.html', text: 'Ir al SPT · Participación' }))
   ]));
 
   raiz.appendChild(el('div', { class: 'card' }, [
@@ -1364,6 +1449,7 @@ function poblarFiltros() {
 
 function render() {
   redibujables = [];
+  UI.pintarConexion(document.querySelector('#conexion'));
   const raiz = $('#vista');
   raiz.innerHTML = '';
   $('#filtros').style.display = (vista === 'datos') ? 'none' : '';
@@ -1375,8 +1461,12 @@ function render() {
   else vistaDatos(raiz);
 }
 
-function iniciar() {
-  estado = cargar();
+async function iniciar() {
+  Datos.alCambiarEstado = () => UI.pintarConexion(document.querySelector('#conexion'));
+  await Datos.iniciar();
+  const recuperadas = importarVersionAnterior();
+  estado = construir();
+  if (recuperadas) console.info(`Se recuperaron ${recuperadas} propuestas de la versión anterior.`);
 
   const selPerfil = $('#perfil');
   PERFILES.forEach(p => selPerfil.appendChild(el('option', { value: p.id, text: p.nombre })));

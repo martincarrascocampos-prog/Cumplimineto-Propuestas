@@ -1,4 +1,17 @@
-# Conectómetro · Cumplimiento del programa FECh 2026
+# Conectómetro · FECh 2026
+
+Dos secciones que comparten una base de datos:
+
+- **Conectómetro** (`index.html`) — cumplimiento del programa: las 102 propuestas, los 7 equipos y sus umbrales.
+- **SPT · Participación** (`spt.html`) — el sistema de planificación de trabajo de la Secretaría de
+  Participación: proyectos, pasos con encargados y plazos, hitos y agenda.
+
+Un proyecto del SPT con origen *Ejes del Programa* es una propuesta del programa, y sus pasos son
+las etapas de esa propuesta: marcar un paso en el SPT sube el cumplimiento en el Conectómetro.
+
+Para publicarlo en Replit con base compartida en Supabase, ver **[PUBLICAR.md](PUBLICAR.md)**.
+
+## Cumplimiento del programa FECh 2026
 
 Aplicación web para hacer seguimiento al cumplimiento del **programa "Conectemos la Chile"**:
 repartir las propuestas entre los equipos de la Mesa, registrar avance por etapas, dejar
@@ -46,7 +59,12 @@ Los datos quedan guardados en ese navegador.
 |---|---|
 | `index.html` | Estructura y estilos |
 | `data.js` | Ejes, equipos, las 102 propuestas con su texto literal y los perfiles |
-| `app.js` | Cálculos, gráficos (SVG sin librerías) y vistas |
+| `app.js` | Conectómetro: cálculos, gráficos (SVG sin librerías) y vistas |
+| `core.js` | Capa de datos compartida (navegador o Supabase) y modelo común |
+| `spt.html`, `spt.js`, `spt-data.js` | Sección SPT de la Secretaría de Participación |
+| `estilos.css` | Estilos de las dos secciones |
+| `server.js`, `.replit` | Para publicar en Replit |
+| `supabase/esquema.sql` | Tablas de la base compartida |
 | `programa/programa-conectemos-la-chile.pdf` | El PDF original del programa |
 | `programa/paginas/` | Miniaturas de las 57 páginas para la galería |
 
