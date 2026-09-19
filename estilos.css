@@ -53,6 +53,7 @@ header.top{
 .brand b{display:block; font-size:16px; letter-spacing:-.02em}
 .brand span{display:block; font-size:12.5px; color:var(--ink-2)}
 .top-actions{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.top-actions select{width:auto; max-width:250px}
 
 nav.tabs{display:flex; gap:4px; padding:10px 16px 0; background:var(--surface);
   border-bottom:1px solid var(--border); overflow-x:auto}
@@ -211,14 +212,22 @@ footer{padding:20px 16px 40px; text-align:center; color:var(--ink-muted); font-s
   box-shadow:0 1px 3px rgba(11,11,11,.18)}
 .pagina span{font-size:11.5px; color:var(--ink-muted); font-variant-numeric:tabular-nums}
 
-/* lector del programa */
-.doc{max-width:66ch}
+/* lector del programa: ocupa el ancho completo y reparte en columnas para que
+   la línea no quede ni angosta ni interminable */
+.doc{max-width:none}
 .doc h3{font-size:19px; margin:26px 0 6px; letter-spacing:-.02em}
-.doc h4{font-size:14px; color:var(--ink-muted); margin:20px 0 4px; text-transform:uppercase; letter-spacing:.05em}
-.doc p{margin:0 0 14px; line-height:1.65; color:var(--ink-2)}
-.doc .prop{margin:0 0 20px}
-.doc .prop b{display:block; font-size:15px; color:var(--ink); margin-bottom:4px}
+.doc h4{font-size:13px; color:var(--ink-muted); margin:22px 0 8px; text-transform:uppercase;
+  letter-spacing:.06em; border-bottom:1px solid var(--grid); padding-bottom:5px}
+.doc p{margin:0 0 12px; line-height:1.6; color:var(--ink-2); text-align:justify; hyphens:auto}
+.doc > p{max-width:78ch}
+.props{display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:4px 30px;
+  align-items:start}
+.doc .prop{margin:0 0 18px; break-inside:avoid}
+.doc .prop b{display:block; font-size:14.5px; color:var(--ink); margin-bottom:4px}
 .doc .prop .cod{font-variant-numeric:tabular-nums; color:var(--ink-muted); font-weight:400}
+.doc .prop .pie{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:2px}
+@media (max-width:640px){ .doc p{text-align:left; hyphens:none} }
+
 .indice{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
 .indice button{font-size:12.5px}
 @media (max-width:640px){ main{padding:12px} .card{padding:13px} .drawer-body{width:100%} }

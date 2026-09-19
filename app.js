@@ -1292,13 +1292,21 @@ function programaLectura(raiz) {
     if (!suyas.length) return;
     doc.appendChild(el('h3', { text: `${ej.id}. ${ej.nombre}` }));
     if (ej.intro && !filtros.texto) doc.appendChild(parrafos(ej.intro));
-    let sub = null;
+
+    /* Las propuestas van en columnas: así el texto llena la pantalla sin que la
+       línea se haga eterna en pantallas anchas. */
+    let sub = null, rejilla = null;
     suyas.forEach(p => {
-      if (p.sub !== sub) { sub = p.sub; doc.appendChild(el('h4', { text: sub })); }
-      doc.appendChild(el('div', { class: 'prop' }, [
+      if (p.sub !== sub) {
+        sub = p.sub;
+        doc.appendChild(el('h4', { text: sub }));
+        rejilla = el('div', { class: 'props' });
+        doc.appendChild(rejilla);
+      }
+      rejilla.appendChild(el('div', { class: 'prop' }, [
         el('b', {}, [el('span', { class: 'cod', text: p.c + '  ' }), document.createTextNode(p.t)]),
         parrafos(p.d || ''),
-        el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;align-items:center' }, [
+        el('div', { class: 'pie' }, [
           chipEstado(p.estado), chipNivel(avanceReal(p)),
           el('span', { style: 'font-size:12px;color:var(--ink-muted)',
             text: (equipoDe(p.eq) || { nombre: 'Sin equipo' }).nombre + ' · ' + pct(avanceReal(p)) }),

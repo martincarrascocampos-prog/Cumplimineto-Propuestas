@@ -829,7 +829,10 @@ function vistaCalendario(raiz) {
           el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')])
         ]),
         el('div', { class: 'toolbar', style: 'margin:8px 0 0' }, [
+          el('a', { class: 'btn btn-sm btn-primary', href: enlaceGoogle(ev), target: '_blank',
+            rel: 'noopener', text: 'Añadir a Google Calendar' }),
           el('button', { class: 'btn btn-sm', type: 'button', text: 'Descargar invitación',
+            title: 'Archivo .ics para Outlook u otros calendarios',
             onclick: () => descargar((ev.tema || 'reunion').replace(/\W+/g, '-') + '.ics',
               ics(ev), 'text/calendar;charset=utf-8') }),
           el('button', { class: 'x', type: 'button', text: '✕ eliminar',
@@ -842,14 +845,43 @@ function vistaCalendario(raiz) {
 
   raiz.appendChild(el('div', { class: 'card compacta' }, [
     el('h2', { text: 'Google Calendar' }),
-    el('div', { class: 'sub', text: 'Sincronización en los dos sentidos' }),
+    el('div', { class: 'sub', text: 'Cómo pasar esto a tu calendario' }),
     el('div', { class: 'note' }, [
-      el('p', { text: 'Por ahora cada reunión se pasa a Google con el botón "Descargar invitación": ' +
-        'el archivo se abre y queda en el calendario.' }),
-      el('p', { text: 'La sincronización automática necesita la cuenta de servicio de Google conectada ' +
-        'en el servidor. Cuando esté, los eventos suben solos y los cambios hechos en Google bajan acá.' })
+      el('p', { text: 'Cada reunión tiene el botón "Añadir a Google Calendar": abre Google con la ' +
+        'reunión ya escrita —tema, hora, lugar e invitados— y sólo hay que guardar. Funciona con ' +
+        'cualquier cuenta, incluida la de la universidad, sin configurar nada.' }),
+      el('p', { text: 'Para que los invitados lleguen por correo, cada persona necesita su correo ' +
+        'cargado en la pestaña Equipo.' }),
+      el('p', { text: 'La sincronización automática en los dos sentidos necesita la cuenta de ' +
+        'servicio de Google conectada en el servidor. Mientras tanto, este botón hace el trabajo.' })
     ])
   ]));
+}
+
+function enlaceGoogle(ev) {
+  const pad = n => String(n).padStart(2, '0');
+  const sello = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T` +
+    `${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const inicio = new Date(!ev.inicio ? Date.now()
+    : (ev.inicio.length <= 10 ? ev.inicio + 'T09:00' : ev.inicio));
+  const fin = new Date(inicio.getTime() + (Number(ev.duracion) || 60) * 60000);
+
+  const correos = String(ev.invitados || '').split(',').map(x => x.trim()).filter(Boolean)
+    .map(nombre => {
+      const persona = integrantes().find(i => i.nombre === nombre);
+      return persona && persona.correo ? persona.correo : (nombre.includes('@') ? nombre : '');
+    }).filter(Boolean);
+
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: ev.tema || 'Reunión',
+    dates: `${sello(inicio)}/${sello(fin)}`,
+    details: 'Creado desde el SPT · Secretaría de Participación' +
+      (ev.invitados ? `\nInvitados: ${ev.invitados}` : ''),
+    location: ev.lugar || ''
+  });
+  correos.forEach(c => params.append('add', c));
+  return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
 function ics(ev) {
