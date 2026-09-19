@@ -66,6 +66,16 @@ create table if not exists hitos (
   fecha    text default ''
 );
 
+-- Varios calendarios: la secretaría, el personal de cada quien, el de un
+-- proyecto grande. Cada uno puede apuntar a un calendario distinto de Google.
+create table if not exists calendarios (
+  id      text primary key,
+  nombre  text,
+  color   int default 1,
+  gcal_id text,
+  orden   int default 0
+);
+
 create table if not exists agenda (
   id        text primary key,
   tema      text,
@@ -75,9 +85,12 @@ create table if not exists agenda (
   lugar     text,
   invitados text,
   estado    text default 'Por agendar',
-  proyecto  text,
-  gcal_id   text
+  proyecto   text,
+  gcal_id    text,
+  calendario text
 );
+
+alter table agenda add column if not exists calendario text;
 
 -- 'disponibilidad' guarda los tramos horarios de cada persona, por día de la
 -- semana: {"1": [["09:00","13:00"],["15:00","18:30"]], "2": [...]}
@@ -92,6 +105,8 @@ create table if not exists integrantes (
 );
 
 alter table integrantes add column if not exists disponibilidad jsonb default '{}'::jsonb;
+-- Qué avisos por correo quiere recibir cada persona.
+alter table integrantes add column if not exists avisos jsonb default '{}'::jsonb;
 
 -- Enlaces a carpetas de Drive, cronogramas y documentos. Si 'proyecto' viene
 -- vacío, el enlace es general de la secretaría.
@@ -103,6 +118,8 @@ create table if not exists enlaces (
 );
 
 alter table enlaces add column if not exists proyecto text;
+
+alter table pasos add column if not exists actualizado text;
 
 create index if not exists pasos_por_proyecto on pasos (proyecto);
 create index if not exists hitos_por_proyecto on hitos (proyecto);
@@ -123,6 +140,7 @@ alter table hitos         enable row level security;
 alter table agenda        enable row level security;
 alter table integrantes   enable row level security;
 alter table enlaces       enable row level security;
+alter table calendarios   enable row level security;
 
 -- La política se crea sólo si falta, para poder volver a ejecutar este archivo
 -- sin borrar nada.
@@ -130,7 +148,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
-                           'hitos','agenda','integrantes','enlaces']
+                           'hitos','agenda','integrantes','enlaces','calendarios']
   loop
     if not exists (
       select 1 from pg_policies
@@ -152,7 +170,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
-                           'hitos','agenda','integrantes','enlaces']
+                           'hitos','agenda','integrantes','enlaces','calendarios']
   loop
     if not exists (
       select 1 from pg_publication_tables

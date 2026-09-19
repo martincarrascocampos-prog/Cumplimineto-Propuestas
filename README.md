@@ -11,7 +11,8 @@ las etapas de esa propuesta: marcar un paso en el SPT sube el cumplimiento en el
 
 Para publicarlo en Replit con base compartida en Supabase, ver **[PUBLICAR.md](PUBLICAR.md)**.
 Para el paso a paso de todas las conexiones (GitHub, Replit, Supabase, Drive y cronogramas),
-ver **[CONECTAR.md](CONECTAR.md)**. Para Google Calendar y los correos, **[GOOGLE.md](GOOGLE.md)**.
+ver **[CONECTAR.md](CONECTAR.md)**. Para Google Calendar, **[GOOGLE.md](GOOGLE.md)**; para los correos automáticos,
+**[CORREOS.md](CORREOS.md)**.
 Los arreglos pendientes están en **[AUDITORIA.md](AUDITORIA.md)**.
 
 Para una versión de **un solo archivo** que se abre con doble clic (las dos secciones y el PDF

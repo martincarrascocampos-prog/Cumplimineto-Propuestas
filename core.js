@@ -16,7 +16,7 @@ const CLAVE_CONEXION = 'conectometro/conexion';
 /* Tablas de la base. El catálogo del programa (las 102 propuestas y su texto)
    no está acá: es fijo y viaja en data.js. */
 const TABLAS = ['equipos', 'seguimiento', 'observaciones', 'proyectos', 'pasos',
-                'hitos', 'agenda', 'integrantes', 'enlaces'];
+                'hitos', 'agenda', 'integrantes', 'enlaces', 'calendarios'];
 
 const vacio = () => TABLAS.reduce((a, t) => (a[t] = [], a), {});
 
@@ -125,6 +125,9 @@ const Datos = {
      va en segundo plano para que la pantalla no se quede esperando. */
   guardar(tabla, fila) {
     if (!fila.id) fila.id = uid();
+    /* Los pasos dejan constancia de cuándo se tocaron: el resumen semanal
+       necesita saber qué se cerró en los últimos siete días. */
+    if (tabla === 'pasos') fila.actualizado = new Date().toISOString();
     const lista = this.tablas[tabla];
     const i = lista.findIndex(f => f.id === fila.id);
     if (i >= 0) lista[i] = fila; else lista.push(fila);

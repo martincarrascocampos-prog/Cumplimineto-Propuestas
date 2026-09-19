@@ -366,3 +366,14 @@ table.densa th,table.densa td{padding:5px 8px; font-size:12.5px}
 .login .sub{margin:0 0 6px}
 .error-login{color:var(--critical); font-size:12.5px; min-height:16px}
 .conexion .x{font-size:11px; padding:0 2px}
+
+
+/* capas del calendario */
+.capas{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; align-items:center}
+.capa{display:inline-flex; gap:6px; align-items:center; font-size:12px; cursor:pointer;
+  background:var(--plane); border:1px solid var(--border); border-radius:999px; padding:3px 10px;
+  color:var(--ink-2)}
+.capa:hover{border-color:var(--axis); color:var(--ink)}
+.capa i{width:9px; height:9px; border-radius:50%; display:inline-block}
+.capa.apagada{opacity:.45}
+.capa.apagada i{background:var(--axis) !important}

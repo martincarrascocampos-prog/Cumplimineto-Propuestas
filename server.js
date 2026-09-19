@@ -23,6 +23,52 @@ app.get('/config.js', (_req, res) => {
     : '/* sin conexión configurada en el servidor */');
 });
 
+/* ------------------------------------------------------------------ *
+ * Correos automáticos
+ *
+ *   /api/correos/ver?tipo=semanal      → muestra lo que se enviaría, sin enviar
+ *   /api/correos/enviar?tipo=semanal   → envía de verdad (pide la clave)
+ *
+ * El envío se dispara desde un horario de Replit o cualquier servicio que
+ * llame a esa dirección. La clave evita que la dispare un desconocido.
+ * ------------------------------------------------------------------ */
+const correos = require('./correos');
+const TIPOS = ['diario', 'semanal', 'urgencias', 'resumen'];
+
+app.get('/api/correos/ver', async (req, res) => {
+  const tipo = String(req.query.tipo || 'semanal');
+  if (!TIPOS.includes(tipo)) return res.status(400).send('Tipo desconocido: ' + TIPOS.join(', '));
+  try {
+    const datos = await correos.leerBase();
+    const armados = correos.construir(tipo, datos, { url: `${req.protocol}://${req.get('host')}/spt` });
+    if (!armados.length) return res.send(
+      `<p style="font-family:system-ui;padding:24px">Con los datos de hoy, el envío <b>${tipo}</b> ` +
+      `no le manda correo a nadie. Es lo esperado cuando no hay nada pendiente.</p>`);
+    res.send(`<div style="font-family:system-ui;padding:16px;background:#e9e9e6">
+      <p style="max-width:560px;margin:0 auto 16px">Vista previa de <b>${tipo}</b>:
+      ${armados.length} correo(s). Nadie los ha recibido.</p>
+      ${armados.map(c => `<div style="max-width:560px;margin:0 auto 8px;font-size:13px">
+        <b>Para:</b> ${c.para} — <b>Asunto:</b> ${c.asunto}</div>${c.html}`).join('')}</div>`);
+  } catch (e) {
+    res.status(500).send('No se pudo preparar: ' + e.message);
+  }
+});
+
+app.post('/api/correos/enviar', async (req, res) => {
+  const tipo = String(req.query.tipo || 'semanal');
+  const clave = process.env.CORREOS_TOKEN;
+  if (clave && req.query.clave !== clave) return res.status(403).json({ error: 'Clave incorrecta' });
+  if (!TIPOS.includes(tipo)) return res.status(400).json({ error: 'Tipo desconocido' });
+  try {
+    const datos = await correos.leerBase();
+    const armados = correos.construir(tipo, datos, { url: `${req.protocol}://${req.get('host')}/spt` });
+    const salida = await correos.enviar(armados);
+    res.json({ tipo, preparados: armados.length, ...salida });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/programa', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/spt', (_req, res) => res.sendFile(path.join(__dirname, 'spt.html')));
 

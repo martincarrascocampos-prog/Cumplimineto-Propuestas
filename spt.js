@@ -17,6 +17,8 @@ let verFormulario = false;
 let mes = new Date();
 let diaElegido = null;
 let personaHorario = null;
+let capasOcultas = new Set();
+let verCalendarios = false;
 
 /* ------------------------------------------------------------------ *
  * 1. Los datos del SPT
@@ -81,6 +83,25 @@ const atrasadosDe = item =>
   pasosDe(item).filter(p => p.plazo && p.estado === 'Pendiente' && p.plazo < hoy()).length;
 
 const integrantes = () => Datos.todo('integrantes');
+
+/* Varios calendarios: la secretaría, el de un proyecto grande, el personal de
+   alguien. Cada uno con su color y, si se quiere, su calendario de Google. */
+const calendarios = () => Datos.todo('calendarios').slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+function asegurarCalendario() {
+  if (calendarios().length) return calendarios()[0];
+  return Datos.guardar('calendarios', { id: uid(), nombre: 'Secretaría de Participación',
+    color: 1, gcal_id: '', orden: 0 });
+}
+const calendarioDe = id => calendarios().find(c => c.id === id) || null;
+const colorCalendario = cal => {
+  const par = [['#2a78d6','#3987e5'], ['#eb6834','#d95926'], ['#1baf7a','#199e70'], ['#eda100','#c98500'],
+    ['#e87ba4','#d55181'], ['#008300','#008300'], ['#4a3aa7','#9085e9'], ['#e34948','#e66767']
+  ][(((cal && cal.color) || 1) - 1) % 8];
+  const oscuro = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  return oscuro ? par[1] : par[0];
+};
 const nombres = () => integrantes().map(i => i.nombre).filter(Boolean);
 
 function filtrados() {
@@ -631,7 +652,7 @@ function tarjetaProyecto(it) {
           onclick: () => {
             Datos.guardar('agenda', { id: uid(), tema: h.detalle, inicio: h.fecha || '', duracion: 60,
               formato: 'Presencial', lugar: '', invitados: (pr.designados || []).join(', '),
-              estado: 'Por agendar', proyecto: pr.id });
+              estado: 'Por agendar', proyecto: pr.id, calendario: asegurarCalendario().id });
             vista = 'calendario'; marcarTab(); render();
           } }),
         el('button', { class: 'x', type: 'button', text: '✕',
@@ -689,7 +710,7 @@ function tarjetaProyecto(it) {
     onclick: () => {
       Datos.guardar('agenda', { id: uid(), tema: 'Reunión — ' + pr.nombre, inicio: '', duracion: 60,
         formato: 'Presencial', lugar: '', invitados: (pr.designados || []).join(', '),
-        estado: 'Por agendar', proyecto: pr.id });
+        estado: 'Por agendar', proyecto: pr.id, calendario: asegurarCalendario().id });
       vista = 'calendario'; marcarTab(); render();
     } }));
   if (!it.codigo || it.origen === 'Reasignado') pie.appendChild(el('button', { class: 'btn btn-sm',
@@ -809,20 +830,23 @@ function eventosDelMes(inicioMes, finMes) {
 
   Datos.todo('agenda').forEach(ev => {
     if (!dentro(ev.inicio)) return;
+    const cal = calendarioDe(ev.calendario);
+    if (capasOcultas.has(ev.calendario || 'sin-calendario')) return;
     const invitados = String(ev.invitados || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!mios(invitados)) return;
     lista.push({ tipo: 'reunion', fecha: ev.inicio.slice(0, 10), hora: horaDe(ev.inicio),
-      titulo: ev.tema, gente: invitados, ref: ev });
+      titulo: ev.tema, gente: invitados, ref: ev,
+      color: colorCalendario(cal), calendario: cal ? cal.nombre : 'sin calendario' });
   });
 
   items().forEach(it => {
-    hitosDe(it).forEach(h => {
+    if (!capasOcultas.has('hitos')) hitosDe(it).forEach(h => {
       if (!dentro(h.fecha)) return;
       if (!mios(designados(it))) return;
       lista.push({ tipo: 'hito', fecha: h.fecha.slice(0, 10), hora: horaDe(h.fecha),
         titulo: h.detalle, contexto: it.nombre, gente: designados(it) });
     });
-    pasosDe(it).forEach(p => {
+    if (!capasOcultas.has('plazos')) pasosDe(it).forEach(p => {
       if (!dentro(p.plazo)) return;
       if (!mios(p.encargados || [])) return;
       lista.push({ tipo: p.estado === 'Pendiente' && p.plazo < hoy() ? 'vencido' : 'paso',
@@ -855,6 +879,28 @@ function vistaCalendario(raiz) {
     el('span', { class: 'count', text: filtros.persona ? `Calendario de ${filtros.persona}` : 'Calendario del equipo' })
   ]);
 
+  /* Capas: cada calendario y las dos capas automáticas se prenden y apagan. */
+  asegurarCalendario();
+  const capas = el('div', { class: 'capas' });
+  const alternar = clave => {
+    capasOcultas.has(clave) ? capasOcultas.delete(clave) : capasOcultas.add(clave);
+    render();
+  };
+  calendarios().forEach(c => capas.appendChild(el('button', {
+    class: 'capa' + (capasOcultas.has(c.id) ? ' apagada' : ''), type: 'button',
+    onclick: () => alternar(c.id) }, [
+    el('i', { style: `background:${colorCalendario(c)}` }), document.createTextNode(c.nombre)
+  ])));
+  [['hitos', 'Hitos', 'var(--warning)'], ['plazos', 'Plazos de pasos', 'var(--ramp-3)']]
+    .forEach(([clave, texto, color]) => capas.appendChild(el('button', {
+      class: 'capa' + (capasOcultas.has(clave) ? ' apagada' : ''), type: 'button',
+      onclick: () => alternar(clave) }, [
+      el('i', { style: `background:${color}` }), document.createTextNode(texto)
+    ])));
+  capas.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
+    text: verCalendarios ? 'Cerrar' : 'Calendarios',
+    onclick: () => { verCalendarios = !verCalendarios; render(); } }));
+
   const grilla = el('div', { class: 'cal' });
   ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].forEach(d =>
     grilla.appendChild(el('div', { class: 'dow', text: d })));
@@ -872,21 +918,18 @@ function vistaCalendario(raiz) {
       type: 'button', onclick: () => { diaElegido = clave; render(); }
     }, [el('span', { class: 'n', text: String(d.getDate()) })]);
     evs.slice(0, 3).forEach(e => celda.appendChild(el('span', {
-      class: 'ev ' + e.tipo, text: (e.hora ? e.hora + ' ' : '') + recorta(e.titulo, 22) })));
+      class: 'ev ' + e.tipo,
+      style: e.color ? `background:color-mix(in srgb, ${e.color} 24%, transparent)` : '',
+      text: (e.hora ? e.hora + ' ' : '') + recorta(e.titulo, 22) })));
     if (evs.length > 3) celda.appendChild(el('span', { class: 'n', text: `+${evs.length - 3}` }));
     if (evs.length) celda.appendChild(el('span', { class: 'punto-dia' },
-      evs.slice(0, 6).map(e => el('i', { style: `background:${
-        e.tipo === 'vencido' ? 'var(--critical)' : e.tipo === 'hito' ? 'var(--warning)' : 'var(--ramp-3)'}` }))));
+      evs.slice(0, 6).map(e => el('i', { style: `background:${e.color ||
+        (e.tipo === 'vencido' ? 'var(--critical)' : e.tipo === 'hito' ? 'var(--warning)' : 'var(--ramp-3)')}` }))));
     grilla.appendChild(celda);
   }
 
-  raiz.appendChild(el('div', { class: 'card compacta' }, [barra, grilla,
-    Graficos.leyenda([
-      { etiqueta: 'Reunión', color: 'var(--track)' },
-      { etiqueta: 'Hito', color: 'var(--warning)' },
-      { etiqueta: 'Plazo de un paso', color: 'var(--ramp-3)' },
-      { etiqueta: 'Plazo vencido', color: 'var(--critical)' }
-    ])]));
+  raiz.appendChild(el('div', { class: 'card compacta' }, [barra, capas, grilla]));
+  if (verCalendarios) raiz.appendChild(gestorCalendarios());
 
   /* Día elegido */
   const delDia = (porDia[diaElegido] || []);
@@ -907,6 +950,8 @@ function vistaCalendario(raiz) {
     const inTema = el('input', { type: 'text', placeholder: 'Nueva reunión ese día' });
     const inHora = el('input', { type: 'time', value: '18:00', style: 'max-width:120px' });
     const inMin = el('input', { type: 'number', value: 60, min: 15, step: 15, style: 'max-width:90px' });
+    const inCal = el('select', { style: 'max-width:200px', title: 'En qué calendario' });
+    calendarios().forEach(c => inCal.appendChild(el('option', { value: c.id, text: c.nombre })));
     let elegidos = filtros.persona ? [filtros.persona] : [];
 
     const cajaGente = el('div', { class: 'meta' });
@@ -954,12 +999,12 @@ function vistaCalendario(raiz) {
       Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(),
         inicio: `${diaElegido}T${inHora.value || '18:00'}`, duracion: Number(inMin.value) || 60,
         formato: 'Presencial', lugar: '', invitados: elegidos.join(', '),
-        estado: 'Por agendar', proyecto: null });
+        estado: 'Por agendar', proyecto: null, calendario: inCal.value });
       render();
     });
 
     card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' },
-      [inTema, inHora, inMin]));
+      [inTema, inHora, inMin, inCal]));
     card.appendChild(el('div', { style: 'margin-top:8px' }, cajaGente));
     card.appendChild(cajaAviso);
     card.appendChild(el('div', { style: 'margin-top:8px' }, boton));
@@ -991,7 +1036,14 @@ function vistaCalendario(raiz) {
           el('label', { class: 'field' }, [el('span', { text: 'Formato' }),
             selector(SPT.listas.formato, ev.formato, v => { ev.formato = v; Datos.guardar('agenda', ev); }, null)]),
           el('label', { class: 'field' }, [el('span', { text: 'Lugar o enlace' }), c('text', ev.lugar, 'lugar')]),
-          el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')])
+          el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')]),
+          el('label', { class: 'field' }, [el('span', { text: 'Calendario' }),
+            selector(calendarios().map(x => x.nombre), (calendarioDe(ev.calendario) || {}).nombre,
+              nombre => {
+                const cal = calendarios().find(x => x.nombre === nombre);
+                ev.calendario = cal ? cal.id : '';
+                Datos.guardar('agenda', ev); render();
+              }, 'Sin calendario')])
         ]),
         cajaAvisos(avisosReunion(ev)),
         el('div', { class: 'toolbar', style: 'margin:8px 0 0' }, [
@@ -1048,6 +1100,48 @@ function enlaceGoogle(ev) {
   });
   correos.forEach(c => params.append('add', c));
   return 'https://calendar.google.com/calendar/render?' + params.toString();
+}
+
+/* Crear, renombrar y colorear calendarios, y apuntar cada uno al suyo de Google. */
+function gestorCalendarios() {
+  const card = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Calendarios' }),
+    el('div', { class: 'sub', text: 'Uno por ámbito: la secretaría, un proyecto grande, lo personal' })
+  ]);
+  calendarios().forEach(c => {
+    const nombre = el('input', { type: 'text', value: c.nombre, style: 'max-width:220px' });
+    nombre.addEventListener('change', () => { c.nombre = nombre.value; Datos.guardar('calendarios', c); render(); });
+    const color = el('select', { style: 'max-width:120px' });
+    ['Azul', 'Naranjo', 'Aqua', 'Amarillo', 'Magenta', 'Verde', 'Violeta', 'Rojo']
+      .forEach((n, i) => color.appendChild(el('option', { value: String(i + 1), text: n })));
+    color.value = String(c.color || 1);
+    color.addEventListener('change', () => { c.color = Number(color.value); Datos.guardar('calendarios', c); render(); });
+    const gcal = el('input', { type: 'text', value: c.gcal_id || '',
+      placeholder: 'ID del calendario de Google (opcional)' });
+    gcal.addEventListener('change', () => { c.gcal_id = gcal.value.trim(); Datos.guardar('calendarios', c); });
+    card.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:4px 0; flex-wrap:wrap' }, [
+      el('span', { class: 'dot', style: `background:${colorCalendario(c)}` }),
+      nombre, color, gcal,
+      calendarios().length > 1 ? el('button', { class: 'x', type: 'button', text: '✕',
+        title: 'Eliminar calendario',
+        onclick: () => UI.borrarConDeshacer('calendarios', { ...c }, 'Calendario', render) }) : null
+    ].filter(Boolean)));
+  });
+  const nuevo = el('input', { type: 'text', placeholder: 'Nombre del calendario', style: 'max-width:240px' });
+  const crear = () => {
+    if (!nuevo.value.trim()) return;
+    Datos.guardar('calendarios', { id: uid(), nombre: nuevo.value.trim(),
+      color: (calendarios().length % 8) + 1, gcal_id: '', orden: calendarios().length });
+    nuevo.value = ''; render();
+  };
+  nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); crear(); } });
+  card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px' }, [
+    nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Crear', onclick: crear })
+  ]));
+  card.appendChild(el('div', { class: 'note', style: 'margin-top:10px', text:
+    'El ID de Google se usa para la sincronización automática: cada calendario de acá puede ir a ' +
+    'uno distinto allá. Se deja vacío si no se sincroniza.' }));
+  return card;
 }
 
 function ics(ev) {

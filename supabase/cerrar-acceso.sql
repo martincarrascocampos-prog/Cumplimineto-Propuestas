@@ -9,7 +9,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
-                           'hitos','agenda','integrantes','enlaces']
+                           'hitos','agenda','integrantes','enlaces','calendarios']
   loop
     execute format('drop policy if exists "acceso equipo" on %I', t);
     execute format(
