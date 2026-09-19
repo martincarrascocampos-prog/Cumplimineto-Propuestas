@@ -1,35 +1,38 @@
+/* ------------------------------------------------------------------ *
+ * Identidad: los colores salen del programa impreso — papel crema, tinta
+ * verde petróleo, y los acentos de sus portadas de eje.
+ * ------------------------------------------------------------------ */
 :root{
   color-scheme: light;
-  --surface:#fcfcfb; --plane:#f9f9f7;
-  --ink:#0b0b0b; --ink-2:#52514e; --ink-muted:#898781;
-  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
-  --ramp-1:#86b6ef; --ramp-2:#5598e7; --ramp-3:#2a78d6; --ramp-4:#1c5cab; --ramp-5:#104281;
-  --track:#e8eef7;
-  --good:#0ca30c; --warning:#fab219; --critical:#d03b3b;
-  --accent:#2a78d6;
-  --shadow:0 1px 2px rgba(11,11,11,.06), 0 8px 24px rgba(11,11,11,.05);
-}
-@media (prefers-color-scheme: dark){
-  :root:where(:not([data-theme="light"])){
-    color-scheme: dark;
-    --surface:#1a1a19; --plane:#0d0d0d;
-    --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
-    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-    --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec; --ramp-5:#9ec5f4;
-    --track:#22262c;
-    --accent:#3987e5;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
-  }
-}
-:root[data-theme="dark"]{
-  color-scheme: dark;
-  --surface:#1a1a19; --plane:#0d0d0d;
-  --ink:#ffffff; --ink-2:#c3c2b7; --ink-muted:#898781;
-  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
-  --ramp-1:#184f95; --ramp-2:#256abf; --ramp-3:#3987e5; --ramp-4:#6da7ec; --ramp-5:#9ec5f4;
-  --track:#22262c;
-  --accent:#3987e5;
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.35);
+
+  --papel:#f4f4e9;              /* el fondo de la página */
+  --surface:#fffffa;            /* las tarjetas */
+  --plane:#f4f4e9;
+  --crema:#eceadb;              /* zonas hundidas */
+
+  --ink:#00343d;                /* tinta principal: el verde petróleo del programa */
+  --ink-2:#3f5a5e;
+  --ink-muted:#7f9290;          /* el gris salvia de sus páginas */
+
+  --grid:#dfe2d5;
+  --axis:#c3c9ba;
+  --border:rgba(0,52,61,.14);
+  --track:#e3e8e2;
+
+  /* rampa de una sola tinta para magnitudes, validada sobre el crema */
+  --ramp-1:#8fbabb; --ramp-2:#62a0a3; --ramp-3:#3e8a8c; --ramp-4:#1b6570; --ramp-5:#00343d;
+
+  /* estados: los mismos del programa */
+  --good:#009c50; --warning:#f19a3d; --critical:#e3342f;
+
+  --accent:#00343d;
+  --accent-vivo:#0090a8;
+  --rojo:#e3342f; --azul:#2a4fd0; --naranjo:#f19a3d; --verde:#009c50;
+  --violeta:#8a3fa0; --cian:#0090a8; --rosa:#c2185b; --oliva:#6b7d00;
+
+  --shadow:0 1px 2px rgba(0,52,61,.06), 0 10px 28px rgba(0,52,61,.07);
+  --shadow-alto:0 2px 6px rgba(0,52,61,.10), 0 18px 40px rgba(0,52,61,.12);
+  --curva:cubic-bezier(.22,.9,.3,1);
 }
 
 *{box-sizing:border-box}
@@ -377,3 +380,208 @@ table.densa th,table.densa td{padding:5px 8px; font-size:12.5px}
 .capa i{width:9px; height:9px; border-radius:50%; display:inline-block}
 .capa.apagada{opacity:.45}
 .capa.apagada i{background:var(--axis) !important}
+
+/* ==================================================================== *
+ * Capa de identidad: relieve, movimiento y presencia.
+ * Va al final a propósito: ajusta lo definido más arriba sin reescribirlo.
+ * ==================================================================== */
+
+body{background:var(--papel)}
+
+/* --- movimiento: entra suave, responde al tacto --------------------- */
+@keyframes sube{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+@keyframes aparece{from{opacity:0} to{opacity:1}}
+@keyframes entraAbajo{from{opacity:0; transform:translate(-50%,14px)} to{opacity:1; transform:translate(-50%,0)}}
+@keyframes entraLado{from{transform:translateX(24px); opacity:.4} to{transform:none; opacity:1}}
+@keyframes late{0%,100%{transform:scale(1)} 50%{transform:scale(1.14)}}
+
+main > .card, main > div > .card, .proyecto{animation:sube .34s var(--curva) both}
+main > .card:nth-child(2){animation-delay:.03s}
+main > .card:nth-child(3){animation-delay:.06s}
+main > .card:nth-child(4){animation-delay:.09s}
+.drawer-body{animation:entraLado .3s var(--curva) both}
+.toast{animation:entraAbajo .26s var(--curva) both}
+.login-card{animation:sube .4s var(--curva) both}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important}
+}
+
+/* --- barra superior: papel con una línea de color ------------------- */
+header.top{
+  background:var(--surface);
+  border-bottom:none;
+  box-shadow:0 1px 0 var(--border), 0 6px 18px rgba(0,52,61,.05);
+}
+header.top::after{
+  content:''; position:absolute; left:0; right:0; bottom:0; height:3px;
+  background:linear-gradient(90deg, var(--rojo) 0 16%, var(--naranjo) 16% 33%, var(--verde) 33% 50%,
+    var(--cian) 50% 66%, var(--azul) 66% 83%, var(--violeta) 83% 100%);
+}
+header.top{position:sticky; z-index:20}
+.brand-mark{
+  background:var(--ink);
+  border-radius:10px;
+  position:relative; overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,52,61,.25);
+}
+.brand-mark::after{
+  content:''; position:absolute; inset:7px 7px auto 7px; height:3px; border-radius:2px;
+  background:var(--naranjo);
+  box-shadow:0 6px 0 var(--verde), 0 12px 0 var(--cian);
+}
+.brand b{letter-spacing:-.025em}
+
+/* --- pestañas: el subrayado se desliza ------------------------------ */
+nav.tabs{background:var(--surface); border-bottom:1px solid var(--border); gap:2px}
+.tab{position:relative; border-bottom:none; transition:color .18s var(--curva), background .18s var(--curva)}
+.tab::after{
+  content:''; position:absolute; left:12px; right:12px; bottom:0; height:3px; border-radius:3px 3px 0 0;
+  background:var(--accent-vivo); transform:scaleX(0); transform-origin:center;
+  transition:transform .26s var(--curva);
+}
+.tab[aria-selected="true"]::after{transform:scaleX(1)}
+.tab:hover{background:var(--crema)}
+
+/* --- botones: peso, relieve y respuesta ----------------------------- */
+.btn{
+  border-radius:9px; font-weight:500;
+  transition:transform .16s var(--curva), box-shadow .16s var(--curva),
+             background .16s var(--curva), border-color .16s var(--curva);
+  box-shadow:0 1px 0 rgba(0,52,61,.05);
+}
+.btn:hover{transform:translateY(-1px); box-shadow:0 3px 10px rgba(0,52,61,.12); border-color:var(--axis)}
+.btn:active{transform:translateY(0); box-shadow:0 1px 0 rgba(0,52,61,.08)}
+.btn-primary{
+  background:var(--ink); color:#fffffa; border-color:transparent; font-weight:600;
+  box-shadow:0 2px 0 #00252c, 0 4px 14px rgba(0,52,61,.28);
+}
+.btn-primary:hover{background:#00454f;
+  box-shadow:0 3px 0 #00252c, 0 8px 20px rgba(0,52,61,.32)}
+.btn-primary:active{box-shadow:0 1px 0 #00252c}
+.btn-ghost{box-shadow:none}
+.btn-ghost:hover{background:var(--crema); box-shadow:none; transform:none}
+.x{border-radius:6px; transition:color .15s var(--curva), background .15s var(--curva)}
+.x:hover{background:color-mix(in srgb, var(--critical) 12%, transparent)}
+
+/* --- campos: el foco se ve de lejos --------------------------------- */
+select,input,textarea{
+  border-radius:9px; background:var(--surface);
+  transition:border-color .16s var(--curva), box-shadow .16s var(--curva), background .16s var(--curva);
+}
+select:hover,input:hover,textarea:hover{border-color:var(--axis)}
+select:focus,input:focus,textarea:focus{
+  outline:none; border-color:var(--accent-vivo);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--accent-vivo) 20%, transparent);
+}
+.field span{font-weight:500; letter-spacing:.01em}
+input[type="checkbox"]{accent-color:var(--verde); cursor:pointer}
+.filters{background:var(--surface); border-bottom:1px solid var(--border); max-width:none;
+  padding:12px 16px}
+.filters > *{max-width:1180px}
+
+/* --- tarjetas: relieve y una cinta de color donde importa ----------- */
+.card{
+  border-radius:14px; border-color:var(--border);
+  transition:box-shadow .22s var(--curva), transform .22s var(--curva);
+}
+.card:hover{box-shadow:var(--shadow-alto)}
+.hero{position:relative}
+.hero-value{color:var(--ink); letter-spacing:-.04em}
+.kpi{
+  background:var(--surface); border-radius:11px; position:relative; overflow:hidden;
+  transition:transform .18s var(--curva), box-shadow .18s var(--curva);
+}
+.kpi:hover{transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,52,61,.10)}
+.kpi::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--ramp-3)}
+.kpi:nth-child(2)::before{background:var(--verde)}
+.kpi:nth-child(3)::before{background:var(--cian)}
+.kpi:nth-child(4)::before{background:var(--naranjo)}
+.kpi:nth-child(5)::before{background:var(--rojo)}
+.kpi:nth-child(6)::before{background:var(--violeta)}
+.kpi b{color:var(--ink)}
+
+/* --- proyectos y nodos ---------------------------------------------- */
+.proyecto{
+  transition:box-shadow .2s var(--curva), border-color .2s var(--curva), transform .2s var(--curva);
+}
+.proyecto:hover{border-color:var(--axis); box-shadow:0 4px 16px rgba(0,52,61,.09)}
+.tag{transition:background .15s var(--curva), border-color .15s var(--curva), color .15s var(--curva)}
+button.tag{cursor:pointer}
+button.tag:hover{border-color:var(--accent-vivo); color:var(--ink)}
+.tag.programa{border-color:var(--cian); color:#036b7d; background:color-mix(in srgb, var(--cian) 10%, transparent)}
+.tag.principal{border-color:var(--verde); color:#00743c; background:color-mix(in srgb, var(--verde) 10%, transparent)}
+.tag.urgente{border-color:var(--rojo); color:var(--rojo); background:color-mix(in srgb, var(--rojo) 9%, transparent)}
+.tag.prioritario{border-color:var(--naranjo); color:#a35c00;
+  background:color-mix(in srgb, var(--naranjo) 14%, transparent)}
+.chip{border-radius:999px}
+.chip.good{border-color:color-mix(in srgb, var(--good) 45%, transparent)}
+.chip.warning{border-color:color-mix(in srgb, var(--warning) 55%, transparent)}
+.chip.critical{border-color:color-mix(in srgb, var(--critical) 40%, transparent)}
+
+/* --- tablas ---------------------------------------------------------- */
+th{background:var(--crema); color:var(--ink-2); letter-spacing:.04em; text-transform:uppercase;
+  font-size:11px}
+.tablewrap{border-radius:12px; overflow:hidden; border-color:var(--border)}
+tbody tr{transition:background .14s var(--curva)}
+tbody tr:hover{background:var(--crema)}
+
+/* --- calendario ------------------------------------------------------ */
+.dia{transition:transform .16s var(--curva), box-shadow .16s var(--curva), border-color .16s var(--curva)}
+.dia:hover{transform:translateY(-2px); box-shadow:0 5px 14px rgba(0,52,61,.10); border-color:var(--accent-vivo)}
+.dia.hoy{border-color:var(--naranjo); box-shadow:0 0 0 1px var(--naranjo) inset}
+.dia.hoy .n{color:var(--naranjo); font-weight:700}
+.dia.elegido{background:var(--crema); border-color:var(--accent-vivo);
+  box-shadow:0 0 0 2px color-mix(in srgb, var(--accent-vivo) 25%, transparent)}
+.capa{transition:opacity .16s var(--curva), border-color .16s var(--curva), transform .16s var(--curva)}
+.capa:hover{transform:translateY(-1px)}
+
+/* --- avisos y sesión -------------------------------------------------- */
+.avisos{border-radius:11px; border-color:color-mix(in srgb, var(--warning) 60%, transparent);
+  background:color-mix(in srgb, var(--warning) 11%, transparent)}
+.conexion{border-radius:999px; font-weight:500}
+.conexion.ok i{background:var(--verde); box-shadow:0 0 0 3px color-mix(in srgb, var(--verde) 22%, transparent);
+  animation:late 2.6s ease-in-out infinite}
+.conexion.local i{background:var(--naranjo)}
+.conexion.error i{background:var(--rojo)}
+.toast{border-radius:12px; box-shadow:var(--shadow-alto); border-color:var(--border)}
+.salto{border-radius:9px; font-weight:500; transition:all .16s var(--curva)}
+.salto:hover{background:var(--surface); border-color:var(--accent-vivo); transform:translateY(-1px)}
+
+/* --- medidor y barras ------------------------------------------------- */
+.meter{border-radius:8px; box-shadow:inset 0 1px 3px rgba(0,52,61,.10)}
+.meter-fill{transition:width .6s var(--curva)}
+.bar-mini{border-radius:4px; box-shadow:inset 0 1px 2px rgba(0,52,61,.08)}
+.bar-mini i{transition:width .5s var(--curva)}
+.literal{border-left-color:var(--cian); background:var(--crema)}
+.note{background:var(--crema); border-radius:11px}
+.sec-titulo h2{color:var(--ink); letter-spacing:.02em; text-transform:uppercase; font-size:12px}
+.linktitle{text-decoration-color:color-mix(in srgb, var(--accent-vivo) 45%, transparent)}
+.linktitle:hover{color:var(--accent-vivo); text-decoration-color:var(--accent-vivo)}
+:focus-visible{outline:2px solid var(--accent-vivo); outline-offset:2px; border-radius:4px}
+footer{color:var(--ink-muted)}
+
+/* --- últimos detalles de color ---------------------------------------- */
+.dia.finde{background:color-mix(in srgb, var(--crema) 60%, var(--surface))}
+.dia.finde .n{color:var(--ink-muted)}
+.dow:nth-child(6),.dow:nth-child(7){color:var(--ink-2)}
+.card > h2,.card .toolbar h2{position:relative; padding-left:13px}
+.card > h2::before,.card .toolbar h2::before{
+  content:''; position:absolute; left:0; top:.18em; bottom:.18em; width:4px; border-radius:3px;
+  background:var(--accent-vivo);
+}
+main > .card:nth-of-type(2) > h2::before,
+main > .card:nth-of-type(2) .toolbar h2::before{background:var(--naranjo)}
+main > .card:nth-of-type(3) > h2::before,
+main > .card:nth-of-type(3) .toolbar h2::before{background:var(--verde)}
+main > .card:nth-of-type(4) > h2::before,
+main > .card:nth-of-type(4) .toolbar h2::before{background:var(--violeta)}
+main > .card:nth-of-type(5) > h2::before,
+main > .card:nth-of-type(5) .toolbar h2::before{background:var(--azul)}
+main > .card:nth-of-type(6) > h2::before,
+main > .card:nth-of-type(6) .toolbar h2::before{background:var(--rosa)}
+.sec-titulo h2{padding-left:0}
+.sec-titulo h2::before{display:none}
+.meter-fill{background-image:linear-gradient(180deg, rgba(255,255,255,.22), rgba(0,0,0,.06))}
+.bar-mini i{background-image:linear-gradient(180deg, rgba(255,255,255,.22), rgba(0,0,0,.06))}

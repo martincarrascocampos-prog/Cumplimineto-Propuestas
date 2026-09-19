@@ -86,7 +86,6 @@ html = f"""<!DOCTYPE html>
       <button type="button" data-seccion="spt" aria-pressed="false">SPT · Participación</button>
     </div>
     <span class="conexion" id="conexion" title="Dónde se están guardando los datos"><i></i><span>…</span></span>
-    <button class="btn btn-ghost" id="btn-tema" title="Cambiar tema" aria-label="Cambiar tema">◐</button>
   </div>
 </header>
 
@@ -168,12 +167,6 @@ window.MINIS_INLINE = ["{'","'.join(minis)}"];
 
   botones.forEach(b => b.addEventListener('click', () => mostrar(b.dataset.seccion)));
 
-  document.getElementById('btn-tema').addEventListener('click', () => {{
-    const actual = document.documentElement.dataset.theme;
-    const oscuro = actual ? actual === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.dataset.theme = oscuro ? 'light' : 'dark';
-    mostrar(window.SECCION);
-  }});
 
   mostrar('conecto');
 }})();

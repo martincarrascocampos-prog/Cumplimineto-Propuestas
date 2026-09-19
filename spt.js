@@ -93,15 +93,8 @@ function asegurarCalendario() {
     color: 1, gcal_id: '', orden: 0 });
 }
 const calendarioDe = id => calendarios().find(c => c.id === id) || null;
-const colorCalendario = cal => {
-  const par = [['#2a78d6','#3987e5'], ['#eb6834','#d95926'], ['#1baf7a','#199e70'], ['#eda100','#c98500'],
-    ['#e87ba4','#d55181'], ['#008300','#008300'], ['#4a3aa7','#9085e9'], ['#e34948','#e66767']
-  ][(((cal && cal.color) || 1) - 1) % 8];
-  const oscuro = document.documentElement.dataset.theme
-    ? document.documentElement.dataset.theme === 'dark'
-    : matchMedia('(prefers-color-scheme: dark)').matches;
-  return oscuro ? par[1] : par[0];
-};
+const colorCalendario = cal => ['#e3342f', '#2a4fd0', '#f19a3d', '#009c50',
+  '#8a3fa0', '#0090a8', '#c2185b', '#6b7d00'][(((cal && cal.color) || 1) - 1) % 8];
 const nombres = () => integrantes().map(i => i.nombre).filter(Boolean);
 
 function filtrados() {
@@ -913,8 +906,8 @@ function vistaCalendario(raiz) {
     const delMes = d.getMonth() === m;
     const evs = porDia[clave] || [];
     const celda = el('button', {
-      class: 'dia' + (delMes ? '' : ' fuera') + (clave === hoy() ? ' hoy' : '') +
-             (clave === diaElegido ? ' elegido' : ''),
+      class: 'dia' + (delMes ? '' : ' fuera') + (i % 7 >= 5 ? ' finde' : '') +
+             (clave === hoy() ? ' hoy' : '') + (clave === diaElegido ? ' elegido' : ''),
       type: 'button', onclick: () => { diaElegido = clave; render(); }
     }, [el('span', { class: 'n', text: String(d.getDate()) })]);
     evs.slice(0, 3).forEach(e => celda.appendChild(el('span', {
@@ -1112,7 +1105,7 @@ function gestorCalendarios() {
     const nombre = el('input', { type: 'text', value: c.nombre, style: 'max-width:220px' });
     nombre.addEventListener('change', () => { c.nombre = nombre.value; Datos.guardar('calendarios', c); render(); });
     const color = el('select', { style: 'max-width:120px' });
-    ['Azul', 'Naranjo', 'Aqua', 'Amarillo', 'Magenta', 'Verde', 'Violeta', 'Rojo']
+    ['Rojo', 'Azul', 'Naranjo', 'Verde', 'Violeta', 'Cian', 'Rosa', 'Oliva']
       .forEach((n, i) => color.appendChild(el('option', { value: String(i + 1), text: n })));
     color.value = String(c.color || 1);
     color.addEventListener('change', () => { c.color = Number(color.value); Datos.guardar('calendarios', c); render(); });
@@ -1391,7 +1384,6 @@ async function iniciar() {
     filtros = { estado: '', urgencia: '', origen: '', persona: '', texto: '' };
     poblarFiltros(); render();
   });
-  if (!window.UNARCHIVO) UI.botonTema($('#btn-tema'), render);
 
   if (!oyentesGlobales) {
     oyentesGlobales = true;

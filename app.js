@@ -64,22 +64,16 @@ const RECURSOS = (() => {
   };
 })();
 
-const PALETA = [
-  ['#2a78d6', '#3987e5'], ['#eb6834', '#d95926'], ['#1baf7a', '#199e70'], ['#eda100', '#c98500'],
-  ['#e87ba4', '#d55181'], ['#008300', '#008300'], ['#4a3aa7', '#9085e9'], ['#e34948', '#e66767']
-];
+/* Los colores del programa impreso, en el orden que pasó la revisión de
+   contraste y daltonismo. */
+const PALETA = ['#e3342f', '#2a4fd0', '#f19a3d', '#009c50',
+                '#8a3fa0', '#0090a8', '#c2185b', '#6b7d00'];
 
 const estadoDe = id => ESTADOS.find(e => e.id === id) || ESTADOS[0];
 const nivelDe = p => NIVELES.slice().reverse().find(n => p >= n.desde) || NIVELES[0];
 const equipoDe = id => estado.equipos.find(e => e.id === id) || null;
 const ejeDe = id => estado.ejes.find(e => e.id === id) || null;
-const oscuro = () => document.documentElement.dataset.theme
-  ? document.documentElement.dataset.theme === 'dark'
-  : matchMedia('(prefers-color-scheme: dark)').matches;
-const colorEquipo = eq => {
-  const par = PALETA[((eq ? eq.color : 1) - 1) % PALETA.length];
-  return oscuro() ? par[1] : par[0];
-};
+const colorEquipo = eq => PALETA[(((eq && eq.color) || 1) - 1) % PALETA.length];
 
 /* ------------------------------------------------------------------ *
  * 2. Estado: vistas sobre la base compartida
@@ -1388,13 +1382,6 @@ async function iniciar() {
     poblarFiltros(); render();
   });
 
-  if (!window.UNARCHIVO) $('#btn-tema').addEventListener('click', () => {
-    const actual = document.documentElement.dataset.theme;
-    const siguiente = actual === 'dark' ? 'light' : actual === 'light' ? '' : (oscuro() ? 'light' : 'dark');
-    if (siguiente) document.documentElement.dataset.theme = siguiente;
-    else delete document.documentElement.dataset.theme;
-    render();
-  });
 
   if (!oyentesGlobales) {
     oyentesGlobales = true;

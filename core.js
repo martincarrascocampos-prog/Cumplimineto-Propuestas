@@ -423,17 +423,6 @@ const UI = {
       Datos.guardar(tabla, fila);
       if (alTerminar) alTerminar();
     } });
-  },
-
-  /* Tema claro / oscuro, igual en las dos secciones. */
-  botonTema(boton, alCambiar) {
-    if (!boton) return;
-    boton.addEventListener('click', () => {
-      const actual = document.documentElement.dataset.theme;
-      const oscuro = actual ? actual === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.theme = oscuro ? 'light' : 'dark';
-      if (alCambiar) alCambiar();
-    });
   }
 };
 
