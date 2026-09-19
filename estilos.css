@@ -350,3 +350,19 @@ table.densa th,table.densa td{padding:5px 8px; font-size:12.5px}
   border:1px solid var(--border); border-radius:8px; padding:2px 4px 2px 6px}
 .tramo input{width:96px; padding:2px 4px; font-size:12.5px; border:none; background:none}
 .sin-tramo{font-size:12px; color:var(--ink-muted)}
+
+
+/* avisos flotantes con deshacer */
+.toast-stack{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:80;
+  display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
+.toast{display:flex; gap:10px; align-items:center; background:var(--surface);
+  border:1px solid var(--border); border-radius:10px; padding:8px 10px 8px 14px;
+  box-shadow:var(--shadow); font-size:13px; pointer-events:auto; max-width:min(92vw,460px)}
+
+/* pantalla de acceso */
+.login-card{max-width:380px; margin:48px auto}
+.login{display:flex; flex-direction:column; gap:10px}
+.login h2{font-size:17px}
+.login .sub{margin:0 0 6px}
+.error-login{color:var(--critical); font-size:12.5px; min-height:16px}
+.conexion .x{font-size:11px; padding:0 2px}

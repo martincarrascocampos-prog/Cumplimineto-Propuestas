@@ -91,7 +91,9 @@ const colorEquipo = eq => {
 let estado = null;
 let filtros = { equipo: '', eje: '', estado: '', texto: '' };
 let vista = 'panel';
-let perfil = PERFILES[0];
+/* Quién puede editar lo decide la sesión en la base, no un selector en la
+   pantalla: mientras no haya cuentas, todo el que entra puede editar. */
+const perfil = { rol: 'admin' };
 let redibujables = [];
 let oyentesGlobales = false;
 
@@ -159,14 +161,11 @@ function agregarEtapa(p, texto) {
   return Modelo.agregarPaso(pr.id, texto);
 }
 
-function borrarEtapa(p, i) {
-  const pasos = Modelo.etapasDe(p.c);
-  const paso = pasos[i];
+function borrarEtapa(p, i, alTerminar) {
+  const paso = Modelo.etapasDe(p.c)[i];
   if (!paso) return;
-  Datos.borrar('pasos', paso.id);
-  Modelo.pasosDe(paso.proyecto).forEach((x, k) => {
-    if (x.n !== k + 1) { x.n = k + 1; Datos.guardar('pasos', x); }
-  });
+  const copia = { ...paso };
+  UI.borrarConDeshacer('pasos', copia, 'Etapa', alTerminar);
 }
 
 function agregarObservacion(p, texto) {
@@ -667,7 +666,7 @@ function abrirPropuesta(p) {
       ]);
       if (editable) bloque.appendChild(el('button', { class: 'x', type: 'button', text: '✕',
         title: 'Eliminar observación',
-        onclick: () => { Datos.borrar('observaciones', o.id); pintarObs(); } }));
+        onclick: () => UI.borrarConDeshacer('observaciones', { ...o }, 'Observación', pintarObs) }));
       listaObs.appendChild(bloque);
     });
   };
@@ -1335,11 +1334,26 @@ function poblarFiltros() {
   $('#f-texto').value = filtros.texto;
 }
 
+function mostrarEstructura(visible) {
+  const nav = document.querySelector('nav.tabs');
+  const filtros = document.querySelector('#filtros');
+  if (nav) nav.style.display = visible ? '' : 'none';
+  if (filtros) filtros.style.display = visible ? '' : 'none';
+}
+
 function render() {
   redibujables = [];
   UI.pintarConexion(document.querySelector('#conexion'));
   const raiz = $('#vista');
   raiz.innerHTML = '';
+
+  /* La base pide sesión: nada se muestra hasta entrar. */
+  if (Sesion.exigida && !Sesion.usuario) {
+    mostrarEstructura(false);
+    UI.pantallaLogin(raiz, () => { estado = construir(); mostrarEstructura(true); render(); });
+    return;
+  }
+  mostrarEstructura(true);
   if (vista === 'propuestas') vistaPropuestas(raiz);
   else if (vista === 'equipos') vistaEquipos(raiz);
   else if (vista === 'proyecto') vistaProyecto(raiz);
@@ -1352,15 +1366,11 @@ async function iniciar() {
   await Datos.iniciar();
   const recuperadas = importarVersionAnterior();
   estado = construir();
-  if (recuperadas) console.info(`Se recuperaron ${recuperadas} propuestas de la versión anterior.`);
 
-  const selPerfil = $('#perfil');
-  PERFILES.forEach(p => selPerfil.appendChild(el('option', { value: p.id, text: p.nombre })));
-  selPerfil.addEventListener('change', () => {
-    perfil = PERFILES.find(p => p.id === selPerfil.value) || PERFILES[0];
-    if (!drawer.hidden && propuestaAbierta) abrirPropuesta(propuestaAbierta);
-    render();
-  });
+  /* Lo que edita otra persona llega solo. */
+  Datos.alCambioRemoto = () => { estado = construir(); render(); };
+  addEventListener('focusout', () => setTimeout(() => Datos.soltarPendiente(), 150));
+  if (recuperadas) console.info(`Se recuperaron ${recuperadas} propuestas de la versión anterior.`);
 
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
     vista = btn.dataset.vista;

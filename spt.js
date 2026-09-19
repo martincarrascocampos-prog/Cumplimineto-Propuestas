@@ -42,7 +42,22 @@ function items() {
   const propios = Datos.todo('proyectos')
     .filter(p => !p.propuesta)
     .map(p => ({ clave: p.id, codigo: null, nombre: p.nombre, texto: '', origen: 'Propio', pr: p }));
-  return [...delPrograma, ...propios];
+
+  /* Si una propuesta se reasigna a otro equipo, su proyecto no desaparece:
+     queda a la vista, marcado, para poder cerrarlo o traspasarlo. */
+  const deParticipacion = new Set(delPrograma.map(x => x.codigo));
+  const reasignados = Datos.todo('proyectos')
+    .filter(p => p.propuesta && !deParticipacion.has(p.propuesta))
+    .map(p => {
+      const base = PROPUESTAS_BASE.find(x => x[0] === p.propuesta);
+      const equipo = Datos.todo('equipos').find(e => e.id === equipoDe(p.propuesta, base ? base[4] : ''));
+      return { clave: p.id, codigo: p.propuesta, nombre: p.nombre, texto: base ? base[5] : '',
+        origen: 'Reasignado', equipoAhora: equipo ? equipo.nombre : 'otro equipo', pr: p };
+    })
+    .filter(it => Modelo.pasosDe(it.pr.id).length || (it.pr.designados || []).length ||
+      Datos.todo('hitos').some(h => h.proyecto === it.pr.id));
+
+  return [...delPrograma, ...propios, ...reasignados];
 }
 
 /* El proyecto se crea recién cuando alguien lo trabaja. */
@@ -404,6 +419,7 @@ function vistaProyectos(raiz) {
 
   const delPrograma = lista.filter(it => it.origen === 'Programa');
   const propios = lista.filter(it => it.origen === 'Propio');
+  const reasignados = lista.filter(it => it.origen === 'Reasignado');
   if (delPrograma.length) {
     raiz.appendChild(seccion(`Del programa · ${delPrograma.length}`));
     delPrograma.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
@@ -411,6 +427,14 @@ function vistaProyectos(raiz) {
   if (propios.length) {
     raiz.appendChild(seccion(`Trabajo propio · ${propios.length}`));
     propios.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
+  }
+  if (reasignados.length) {
+    raiz.appendChild(seccion(`Reasignados a otro equipo · ${reasignados.length}`));
+    raiz.appendChild(el('div', { class: 'note', style: 'margin-bottom:10px', text:
+      'Estas propuestas ya no están designadas a Participación en el programa, pero acá quedó ' +
+      'trabajo hecho. Su avance sigue contando para el equipo que las tenga ahora. Ciérralas o ' +
+      'elimínalas cuando corresponda.' }));
+    reasignados.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
   }
 }
 
@@ -469,7 +493,8 @@ function tarjetaProyecto(it) {
   marca.textContent = `${pct(a)} · ${pasosDe(it).length} pasos` + (atrasos ? ` · ${atrasos} atrasados` : '');
 
   card.appendChild(el('div', { class: 'meta' }, [
-    it.codigo ? tag('Programa ' + it.codigo, 'programa') : tag('Propio'),
+    it.origen === 'Reasignado' ? tag('Ahora de ' + it.equipoAhora, 'urgente')
+      : it.codigo ? tag('Programa ' + it.codigo, 'programa') : tag('Propio'),
     principal(it) ? tag('★ ' + principal(it), 'principal') : null,
     tag(campo(it, 'urgencia'), claseUrgencia(campo(it, 'urgencia'))),
     tag(campo(it, 'clasificacion')),
@@ -569,7 +594,8 @@ function tarjetaProyecto(it) {
       cajaPasos.appendChild(el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
         el('span', { class: 'n', text: String(i + 1) }), chk, desc, fecha, est, enc,
         el('button', { class: 'x', type: 'button', text: '✕', title: 'Eliminar paso',
-          onclick: () => { Datos.borrar('pasos', paso.id); pintarPasos(); refrescarCabeza(); } })
+          onclick: () => UI.borrarConDeshacer('pasos', { ...paso }, 'Paso',
+            () => { pintarPasos(); refrescarCabeza(); }) })
       ]));
     });
     const nuevo = el('input', { type: 'text', placeholder: 'Nuevo paso…', style: 'max-width:300px' });
@@ -609,7 +635,7 @@ function tarjetaProyecto(it) {
             vista = 'calendario'; marcarTab(); render();
           } }),
         el('button', { class: 'x', type: 'button', text: '✕',
-          onclick: () => { Datos.borrar('hitos', h.id); pintarHitos(); } })
+          onclick: () => UI.borrarConDeshacer('hitos', { ...h }, 'Hito', pintarHitos) })
       ]));
     });
     const nuevo = el('input', { type: 'text', placeholder: 'Nuevo hito…', style: 'max-width:300px' });
@@ -641,7 +667,7 @@ function tarjetaProyecto(it) {
         n, u,
         g.url ? el('a', { class: 'btn btn-sm', href: g.url, target: '_blank', rel: 'noopener', text: 'Abrir' }) : null,
         el('button', { class: 'x', type: 'button', text: '✕',
-          onclick: () => { Datos.borrar('enlaces', g.id); pintarEnlaces(); } })
+          onclick: () => UI.borrarConDeshacer('enlaces', { ...g }, 'Enlace', pintarEnlaces) })
       ].filter(Boolean)));
     });
     const opciones = ['Carpeta de Drive', 'Cronograma', 'Documento de trabajo', 'Acta'];
@@ -666,7 +692,8 @@ function tarjetaProyecto(it) {
         estado: 'Por agendar', proyecto: pr.id });
       vista = 'calendario'; marcarTab(); render();
     } }));
-  if (!it.codigo) pie.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Eliminar',
+  if (!it.codigo || it.origen === 'Reasignado') pie.appendChild(el('button', { class: 'btn btn-sm',
+    type: 'button', text: it.origen === 'Reasignado' ? 'Eliminar de este SPT' : 'Eliminar',
     onclick: () => {
       if (!confirm(`¿Eliminar "${pr.nombre}" y todo lo que cuelga de él?`)) return;
       Modelo.pasosDe(pr.id).forEach(p => Datos.borrar('pasos', p.id));
@@ -975,7 +1002,7 @@ function vistaCalendario(raiz) {
             onclick: () => descargar((ev.tema || 'reunion').replace(/\W+/g, '-') + '.ics',
               ics(ev), 'text/calendar;charset=utf-8') }),
           el('button', { class: 'x', type: 'button', text: '✕ eliminar',
-            onclick: () => { Datos.borrar('agenda', ev.id); render(); } })
+            onclick: () => UI.borrarConDeshacer('agenda', { ...ev }, 'Reunión', render) })
         ])
       ])
     ]));
@@ -1067,8 +1094,8 @@ function vistaEquipo(raiz) {
         type: 'button', text: resumenHorario(p), 'data-horario': p.id,
         title: 'Editar horarios disponibles',
         onclick: () => { personaHorario = personaHorario === p.id ? null : p.id; render(); } }),
-      el('button', { class: 'x', type: 'button', text: '✕',
-        onclick: () => { Datos.borrar('integrantes', p.id); render(); } })];
+      el('button', { class: 'x', type: 'button', text: '✕', title: 'Quitar del equipo',
+        onclick: () => UI.borrarConDeshacer('integrantes', { ...p }, 'Integrante', render) })];
   });
   card.appendChild(filas.length
     ? tablaDensa(['Nombre', 'Rol', 'Correo', 'Horarios', ''], filas)
@@ -1112,7 +1139,7 @@ function vistaEquipo(raiz) {
       n, u,
       g.url ? el('a', { class: 'btn btn-sm', href: g.url, target: '_blank', rel: 'noopener', text: 'Abrir' }) : null,
       el('button', { class: 'x', type: 'button', text: '✕',
-        onclick: () => { Datos.borrar('enlaces', g.id); render(); } })
+        onclick: () => UI.borrarConDeshacer('enlaces', { ...g }, 'Enlace', render) })
     ].filter(Boolean)));
   });
   const nombreEnlace = el('input', { type: 'text', placeholder: 'Nombre del enlace', style: 'max-width:220px' });
@@ -1218,7 +1245,7 @@ function poblarFiltros() {
   };
   set('#f-estado', SPT.listas.estadoProyecto, filtros.estado, 'Todos los estados');
   set('#f-urgencia', SPT.listas.urgencia, filtros.urgencia, 'Toda urgencia');
-  set('#f-origen', ['Programa', 'Propio'], filtros.origen, 'Todo origen');
+  set('#f-origen', ['Programa', 'Propio', 'Reasignado'], filtros.origen, 'Todo origen');
   set('#f-persona', nombres(), filtros.persona, 'Todo el equipo');
   $('#f-texto').value = filtros.texto;
 }
@@ -1232,8 +1259,17 @@ function render() {
   window.REDIBUJAR = [];
   const raiz = $('#vista');
   raiz.innerHTML = '';
-  $('#filtros').style.display = (vista === 'equipo') ? 'none' : '';
   UI.pintarConexion($('#conexion'));
+
+  const nav = document.querySelector('nav.tabs');
+  if (Sesion.exigida && !Sesion.usuario) {
+    if (nav) nav.style.display = 'none';
+    $('#filtros').style.display = 'none';
+    UI.pantallaLogin(raiz, () => { if (nav) nav.style.display = ''; render(); });
+    return;
+  }
+  if (nav) nav.style.display = '';
+  $('#filtros').style.display = (vista === 'equipo') ? 'none' : '';
   if (vista === 'tablero') vistaTablero(raiz);
   else if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'proyectos') vistaProyectos(raiz);
@@ -1245,6 +1281,7 @@ let oyentesGlobales = false;
 
 async function iniciar() {
   Datos.alCambiarEstado = () => UI.pintarConexion($('#conexion'));
+  Datos.alCambioRemoto = () => render();
   await Datos.iniciar();
 
   document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
@@ -1264,6 +1301,7 @@ async function iniciar() {
 
   if (!oyentesGlobales) {
     oyentesGlobales = true;
+    addEventListener('focusout', () => setTimeout(() => Datos.soltarPendiente(), 150));
     let t;
     addEventListener('resize', () => {
       if (window.UNARCHIVO && window.SECCION !== 'spt') return;

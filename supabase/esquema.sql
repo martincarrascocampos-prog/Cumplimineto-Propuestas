@@ -141,3 +141,24 @@ begin
     end if;
   end loop;
 end $$;
+
+
+-- ---------------------------------------------------------------------------
+-- Tiempo real: para que lo que edita una persona aparezca en la pantalla de
+-- las demás sin recargar. Sin esto, la aplicación igual funciona, pero cada
+-- quien ve su propia foto hasta que recarga.
+-- ---------------------------------------------------------------------------
+do $$
+declare t text;
+begin
+  foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
+                           'hitos','agenda','integrantes','enlaces']
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table %I', t);
+    end if;
+  end loop;
+end $$;

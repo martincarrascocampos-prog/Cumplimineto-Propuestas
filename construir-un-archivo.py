@@ -30,11 +30,6 @@ ui_spt = entre(spt_html, '<nav class="tabs"', '</main>')
 # El panel lateral de la propuesta vive fuera de las secciones: es una capa encima.
 cajon = entre(index_html, '<div id="drawer"', '<div id="tt"', incluir_hasta=False)
 
-# El selector de acceso pertenece al Conectómetro, así que viaja con su sección.
-perfil = ('<div class="barra-perfil">'
-          '<select id="perfil" title="Acceso activo" aria-label="Acceso activo"></select>'
-          '</div>\n')
-ui_conecto = perfil + ui_conecto
 
 css = leer('estilos.css') + """
 

@@ -65,11 +65,20 @@ const Datos = {
       try {
         this.anunciar('conectando', 'Conectando con la base compartida…');
         this.cliente = global.supabase.createClient(con.url, con.clave);
+        await Sesion.recuperar();
         await this.leerTodo();
         this.modo = 'supabase';
+        this.escuchar();
         this.anunciar('listo', 'Base compartida');
         return;
       } catch (e) {
+        /* Si la base pide sesión, no es un error de conexión: es que hay que entrar. */
+        if (/permission|denied|JWT|row-level|RLS/i.test(e.message || '')) {
+          this.modo = 'supabase';
+          Sesion.exigida = true;
+          this.anunciar('sesion', 'Hay que iniciar sesión para ver los datos');
+          return;
+        }
         this.cliente = null;
         this.anunciar('error', 'No se pudo conectar: ' + (e.message || e) + '. Trabajando en este navegador.');
       }
@@ -145,7 +154,93 @@ const Datos = {
     if (this.modo !== 'supabase') return false;
     await this.leerTodo();
     return true;
+  },
+
+  /* --------------------------------------------------------------- *
+   * Tiempo real: lo que edita una persona aparece en la pantalla de
+   * las demás sin recargar.
+   * --------------------------------------------------------------- */
+  canal: null,
+  alCambioRemoto: null,
+  cambioPendiente: false,
+  _temporizador: null,
+
+  escuchar() {
+    if (this.modo !== 'supabase' || this.canal || !this.cliente.channel) return;
+    this.canal = this.cliente.channel('conectometro');
+    TABLAS.forEach(t => this.canal.on('postgres_changes',
+      { event: '*', schema: 'public', table: t },
+      carga => this.aplicarRemoto(t, carga)));
+    this.canal.subscribe();
+  },
+
+  aplicarRemoto(tabla, carga) {
+    const lista = this.tablas[tabla] || (this.tablas[tabla] = []);
+    if (carga.eventType === 'DELETE') {
+      const id = carga.old && carga.old.id;
+      this.tablas[tabla] = lista.filter(f => f.id !== id);
+    } else if (carga.new) {
+      const i = lista.findIndex(f => f.id === carga.new.id);
+      if (i >= 0) lista[i] = carga.new; else lista.push(carga.new);
+    }
+    this.avisarRemoto();
+  },
+
+  /* No repintamos encima de alguien que está escribiendo: se espera a que
+     suelte el campo. */
+  avisarRemoto() {
+    clearTimeout(this._temporizador);
+    this._temporizador = setTimeout(() => {
+      const foco = document.activeElement;
+      const escribiendo = foco && /^(INPUT|SELECT|TEXTAREA)$/.test(foco.tagName);
+      if (escribiendo) { this.cambioPendiente = true; return; }
+      this.cambioPendiente = false;
+      if (this.alCambioRemoto) this.alCambioRemoto();
+    }, 400);
+  },
+
+  soltarPendiente() {
+    if (!this.cambioPendiente) return;
+    this.cambioPendiente = false;
+    if (this.alCambioRemoto) this.alCambioRemoto();
   }
+};
+
+/* ------------------------------------------------------------------ *
+ * Sesión: correo y contraseña. Las cuentas las crea quien administra
+ * desde el panel de Supabase; acá sólo se entra y se sale.
+ * ------------------------------------------------------------------ */
+const Sesion = {
+  usuario: null,
+  exigida: false,        /* se enciende si la base rechaza leer sin sesión */
+
+  disponible() { return !!(Datos.cliente && Datos.cliente.auth); },
+
+  async recuperar() {
+    if (!this.disponible()) return null;
+    try {
+      const { data } = await Datos.cliente.auth.getSession();
+      this.usuario = (data && data.session && data.session.user) || null;
+    } catch (e) { this.usuario = null; }
+    return this.usuario;
+  },
+
+  async entrar(correo, clave) {
+    if (!this.disponible()) throw new Error('La base compartida no está conectada.');
+    const { data, error } = await Datos.cliente.auth.signInWithPassword({
+      email: String(correo).trim(), password: clave });
+    if (error) throw new Error(error.message === 'Invalid login credentials'
+      ? 'Correo o contraseña incorrectos.' : error.message);
+    this.usuario = data.user;
+    return this.usuario;
+  },
+
+  async salir() {
+    if (this.disponible()) await Datos.cliente.auth.signOut();
+    this.usuario = null;
+  },
+
+  correo() { return this.usuario ? this.usuario.email : ''; }
 };
 
 /* ------------------------------------------------------------------ *
@@ -249,16 +344,84 @@ const UI = {
   /* Marca el estado de la conexión en la barra superior. */
   pintarConexion(nodo) {
     if (!nodo) return;
-    const clases = { listo: Datos.modo === 'supabase' ? 'ok' : 'local', error: 'error' };
+    const clases = { listo: Datos.modo === 'supabase' ? 'ok' : 'local', error: 'error', sesion: 'error' };
     nodo.className = 'conexion ' + (clases[Datos.estado] || '');
     nodo.innerHTML = '';
     nodo.appendChild(UI.el('i', {}));
     nodo.appendChild(UI.el('span', { text:
       Datos.estado === 'error' ? 'Sin conexión'
-      : Datos.modo === 'supabase' ? 'Base compartida'
+      : Datos.estado === 'sesion' ? 'Sesión requerida'
+      : Datos.modo === 'supabase' ? (Sesion.correo() || 'Base compartida')
       : Datos.estado === 'conectando' ? 'Conectando…' : 'Solo este navegador' }));
-    nodo.title = Datos.mensaje || '';
+    nodo.title = Sesion.correo() ? `Sesión de ${Sesion.correo()}` : (Datos.mensaje || '');
+    if (Sesion.usuario) {
+      nodo.appendChild(UI.el('button', { class: 'x', type: 'button', text: 'salir',
+        title: 'Cerrar sesión',
+        onclick: async () => { await Sesion.salir(); location.reload(); } }));
+    }
   },
+
+  /* Pantalla de acceso. Aparece sólo cuando la base exige sesión. */
+  pantallaLogin(raiz, alEntrar) {
+    const correo = UI.el('input', { type: 'email', placeholder: 'tu correo', autocomplete: 'username' });
+    const clave = UI.el('input', { type: 'password', placeholder: 'contraseña',
+      autocomplete: 'current-password' });
+    const error = UI.el('div', { class: 'error-login' });
+    const boton = UI.el('button', { class: 'btn btn-primary', type: 'submit', text: 'Entrar' });
+
+    const forma = UI.el('form', { class: 'login' }, [
+      UI.el('h2', { text: 'Entrar al sistema' }),
+      UI.el('p', { class: 'sub', text: 'Con el correo y la contraseña que te dieron en la Mesa.' }),
+      UI.el('label', { class: 'field' }, [UI.el('span', { text: 'Correo' }), correo]),
+      UI.el('label', { class: 'field' }, [UI.el('span', { text: 'Contraseña' }), clave]),
+      error, boton
+    ]);
+    forma.addEventListener('submit', async ev => {
+      ev.preventDefault();
+      error.textContent = '';
+      boton.disabled = true;
+      boton.textContent = 'Entrando…';
+      try {
+        await Sesion.entrar(correo.value, clave.value);
+        await Datos.iniciar();
+        if (alEntrar) alEntrar();
+      } catch (e) {
+        error.textContent = e.message || 'No se pudo entrar.';
+        boton.disabled = false;
+        boton.textContent = 'Entrar';
+      }
+    });
+    raiz.appendChild(UI.el('div', { class: 'card login-card' }, forma));
+  },
+  /* Aviso flotante, con la opción de deshacer lo que se acaba de borrar. */
+  aviso(texto, accion) {
+    let pila = document.getElementById('avisos');
+    if (!pila) {
+      pila = UI.el('div', { id: 'avisos', class: 'toast-stack' });
+      document.body.appendChild(pila);
+    }
+    const caja = UI.el('div', { class: 'toast' }, [UI.el('span', { text: texto })]);
+    let fuera = null;
+    const cerrar = () => { clearTimeout(fuera); caja.remove(); };
+    if (accion) caja.appendChild(UI.el('button', { class: 'btn btn-sm', type: 'button',
+      text: accion.texto || 'Deshacer', onclick: () => { cerrar(); accion.hacer(); } }));
+    caja.appendChild(UI.el('button', { class: 'x', type: 'button', text: '✕',
+      'aria-label': 'Cerrar aviso', onclick: cerrar }));
+    pila.appendChild(caja);
+    fuera = setTimeout(cerrar, accion ? 9000 : 4000);
+    return cerrar;
+  },
+
+  /* Borrar con red: se quita al tiro y queda 9 segundos para arrepentirse. */
+  borrarConDeshacer(tabla, fila, etiqueta, alTerminar) {
+    Datos.borrar(tabla, fila.id);
+    if (alTerminar) alTerminar();
+    UI.aviso(`${etiqueta} eliminado`, { hacer: () => {
+      Datos.guardar(tabla, fila);
+      if (alTerminar) alTerminar();
+    } });
+  },
+
   /* Tema claro / oscuro, igual en las dos secciones. */
   botonTema(boton, alCambiar) {
     if (!boton) return;
@@ -432,6 +595,7 @@ const Graficos = {
   }
 };
 
+global.Sesion = Sesion;
 global.Graficos = Graficos;
 global.UI = UI;
 global.Datos = Datos;
