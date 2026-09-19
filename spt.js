@@ -16,6 +16,7 @@ let abiertos = {};
 let verFormulario = false;
 let mes = new Date();
 let diaElegido = null;
+let personaHorario = null;
 
 /* ------------------------------------------------------------------ *
  * 1. Los datos del SPT
@@ -682,7 +683,97 @@ function tarjetaProyecto(it) {
 }
 
 /* ------------------------------------------------------------------ *
- * 6. Vista: Calendario
+ * 6. Disponibilidad del equipo
+ *
+ * Cada persona declara en qué tramos puede. Con eso, al agendar avisamos si
+ * alguien queda fuera de su horario o si ya tiene otra cosa a esa hora.
+ * ------------------------------------------------------------------ */
+const DIAS = [
+  { n: 1, corto: 'Lun', largo: 'lunes' }, { n: 2, corto: 'Mar', largo: 'martes' },
+  { n: 3, corto: 'Mié', largo: 'miércoles' }, { n: 4, corto: 'Jue', largo: 'jueves' },
+  { n: 5, corto: 'Vie', largo: 'viernes' }, { n: 6, corto: 'Sáb', largo: 'sábado' },
+  { n: 7, corto: 'Dom', largo: 'domingo' }
+];
+
+/* 1 = lunes … 7 = domingo */
+const diaSemana = fechaISO => (((new Date(fechaISO.slice(0, 10) + 'T12:00').getDay()) + 6) % 7) + 1;
+const tramosDe = (persona, dia) => ((persona && persona.disponibilidad) || {})[dia] || [];
+const personaPorNombre = n => integrantes().find(i => i.nombre === n) || null;
+const nombresDe = txt => String(txt || '').split(',').map(x => x.trim()).filter(Boolean);
+
+function sumarMinutos(hora, minutos) {
+  const [h, m] = String(hora || '00:00').split(':').map(Number);
+  const total = h * 60 + m + (Number(minutos) || 0);
+  const hh = Math.floor((total % 1440 + 1440) % 1440 / 60);
+  const mm = ((total % 1440) + 1440) % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+/* Resumen corto: "L-V 09:00–18:00" o "3 días con horario" */
+function resumenHorario(persona) {
+  const d = (persona && persona.disponibilidad) || {};
+  const conTramos = DIAS.filter(x => (d[x.n] || []).length);
+  if (!conTramos.length) return 'sin definir';
+  const firma = JSON.stringify(d[conTramos[0].n]);
+  const todosIguales = conTramos.every(x => JSON.stringify(d[x.n]) === firma);
+  if (todosIguales) {
+    const tramos = d[conTramos[0].n].map(t => `${t[0]}–${t[1]}`).join(', ');
+    const dias = conTramos.length === 5 && conTramos.every(x => x.n <= 5)
+      ? 'L a V' : conTramos.map(x => x.corto).join(' ');
+    return `${dias} ${tramos}`;
+  }
+  return `${conTramos.length} días con horario`;
+}
+
+/* Avisos de una reunión: horarios fuera de rango y choques con otra cosa. */
+function avisosReunion(ev) {
+  const avisos = [];
+  if (!ev.inicio || ev.inicio.length <= 10) return avisos;
+  const fecha = ev.inicio.slice(0, 10);
+  const hIni = ev.inicio.slice(11, 16);
+  const hFin = sumarMinutos(hIni, ev.duracion || 60);
+  const dia = diaSemana(fecha);
+  const invitados = nombresDe(ev.invitados);
+
+  invitados.forEach(nombre => {
+    const persona = personaPorNombre(nombre);
+    if (!persona) return;
+    const tramos = tramosDe(persona, dia);
+    const nombreDia = (DIAS.find(d => d.n === dia) || {}).largo || '';
+    if (!tramos.length) {
+      avisos.push(`${nombre} no tiene horario disponible los ${nombreDia}`);
+    } else if (!tramos.some(t => hIni >= t[0] && hFin <= t[1])) {
+      avisos.push(`${nombre} solo puede los ${nombreDia} de ${tramos.map(t => `${t[0]} a ${t[1]}`).join(' y ')}`);
+    }
+  });
+
+  /* Choques con otras reuniones que compartan gente */
+  Datos.todo('agenda').forEach(otra => {
+    if (otra.id === ev.id || !otra.inicio || otra.inicio.slice(0, 10) !== fecha) return;
+    const oIni = otra.inicio.slice(11, 16);
+    const oFin = sumarMinutos(oIni, otra.duracion || 60);
+    if (!(hIni < oFin && oIni < hFin)) return;
+    const compartidos = nombresDe(otra.invitados).filter(n => invitados.includes(n));
+    if (compartidos.length) {
+      avisos.push(`${compartidos.join(', ')} ${compartidos.length > 1 ? 'tienen' : 'tiene'} ` +
+        `"${otra.tema}" a esa misma hora`);
+    } else if (!invitados.length) {
+      avisos.push(`Se cruza con "${otra.tema}"`);
+    }
+  });
+  return avisos;
+}
+
+function cajaAvisos(avisos) {
+  if (!avisos.length) return null;
+  return el('div', { class: 'avisos' }, [
+    el('b', { text: '⚠ ' + (avisos.length === 1 ? 'Un problema de horario' : `${avisos.length} problemas de horario`) }),
+    el('ul', {}, avisos.map(a => el('li', { text: a })))
+  ]);
+}
+
+/* ------------------------------------------------------------------ *
+ * 7. Vista: Calendario
  * ------------------------------------------------------------------ */
 function eventosDelMes(inicioMes, finMes) {
   const dentro = f => f && f.slice(0, 10) >= inicioMes && f.slice(0, 10) <= finMes;
@@ -788,16 +879,63 @@ function vistaCalendario(raiz) {
   if (diaElegido) {
     const inTema = el('input', { type: 'text', placeholder: 'Nueva reunión ese día' });
     const inHora = el('input', { type: 'time', value: '18:00', style: 'max-width:120px' });
-    card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' }, [
-      inTema, inHora,
-      el('button', { class: 'btn btn-sm btn-primary', type: 'button', text: 'Agendar', onclick: () => {
-        if (!inTema.value.trim()) return;
-        Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(),
-          inicio: `${diaElegido}T${inHora.value || '18:00'}`, duracion: 60, formato: 'Presencial',
-          lugar: '', invitados: filtros.persona || '', estado: 'Por agendar', proyecto: null });
-        render();
-      } })
-    ]));
+    const inMin = el('input', { type: 'number', value: 60, min: 15, step: 15, style: 'max-width:90px' });
+    let elegidos = filtros.persona ? [filtros.persona] : [];
+
+    const cajaGente = el('div', { class: 'meta' });
+    const cajaAviso = el('div', {});
+    const boton = el('button', { class: 'btn btn-sm btn-primary', type: 'button', text: 'Agendar' });
+
+    const revisar = () => {
+      const avisos = avisosReunion({ id: null, tema: inTema.value,
+        inicio: `${diaElegido}T${inHora.value || '18:00'}`,
+        duracion: Number(inMin.value) || 60, invitados: elegidos.join(', ') });
+      cajaAviso.innerHTML = '';
+      const caja = cajaAvisos(avisos);
+      if (caja) cajaAviso.appendChild(caja);
+      boton.textContent = avisos.length ? 'Agendar de todos modos' : 'Agendar';
+    };
+
+    const pintarGente = () => {
+      cajaGente.innerHTML = '';
+      if (!nombres().length) {
+        cajaGente.appendChild(el('span', { style: 'font-size:12.5px;color:var(--ink-muted)',
+          text: 'Carga al equipo en la pestaña Equipo para avisar de los choques de horario.' }));
+        return;
+      }
+      nombres().forEach(n => {
+        const dentro = elegidos.includes(n);
+        const persona = personaPorNombre(n);
+        cajaGente.appendChild(el('button', {
+          class: 'tag' + (dentro ? ' principal' : ''), type: 'button',
+          title: 'Disponible: ' + resumenHorario(persona),
+          text: (dentro ? '✓ ' : '+ ') + n,
+          onclick: () => {
+            elegidos = dentro ? elegidos.filter(x => x !== n) : [...elegidos, n];
+            pintarGente(); revisar();
+          } }));
+      });
+    };
+    pintarGente();
+
+    inHora.addEventListener('input', revisar);
+    inMin.addEventListener('input', revisar);
+    revisar();
+
+    boton.addEventListener('click', () => {
+      if (!inTema.value.trim()) { inTema.focus(); return; }
+      Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(),
+        inicio: `${diaElegido}T${inHora.value || '18:00'}`, duracion: Number(inMin.value) || 60,
+        formato: 'Presencial', lugar: '', invitados: elegidos.join(', '),
+        estado: 'Por agendar', proyecto: null });
+      render();
+    });
+
+    card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' },
+      [inTema, inHora, inMin]));
+    card.appendChild(el('div', { style: 'margin-top:8px' }, cajaGente));
+    card.appendChild(cajaAviso);
+    card.appendChild(el('div', { style: 'margin-top:8px' }, boton));
   }
   raiz.appendChild(card);
 
@@ -828,6 +966,7 @@ function vistaCalendario(raiz) {
           el('label', { class: 'field' }, [el('span', { text: 'Lugar o enlace' }), c('text', ev.lugar, 'lugar')]),
           el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')])
         ]),
+        cajaAvisos(avisosReunion(ev)),
         el('div', { class: 'toolbar', style: 'margin:8px 0 0' }, [
           el('a', { class: 'btn btn-sm btn-primary', href: enlaceGoogle(ev), target: '_blank',
             rel: 'noopener', text: 'Añadir a Google Calendar' }),
@@ -908,7 +1047,7 @@ function descargar(nombre, contenido, tipo) {
 }
 
 /* ------------------------------------------------------------------ *
- * 7. Vista: Equipo
+ * 8. Vista: Equipo
  * ------------------------------------------------------------------ */
 function vistaEquipo(raiz) {
   const card = el('div', { class: 'card compacta' }, [
@@ -924,11 +1063,15 @@ function vistaEquipo(raiz) {
     };
     return [campoTxt(p.nombre, 'nombre'), campoTxt(p.rol, 'rol', 'text', 'Rol en la secretaría'),
       campoTxt(p.correo, 'correo', 'email', 'nombre@ug.uchile.cl'),
+      el('button', { class: 'btn btn-sm' + (personaHorario === p.id ? ' btn-primary' : ''),
+        type: 'button', text: resumenHorario(p), 'data-horario': p.id,
+        title: 'Editar horarios disponibles',
+        onclick: () => { personaHorario = personaHorario === p.id ? null : p.id; render(); } }),
       el('button', { class: 'x', type: 'button', text: '✕',
         onclick: () => { Datos.borrar('integrantes', p.id); render(); } })];
   });
   card.appendChild(filas.length
-    ? tablaDensa(['Nombre', 'Rol', 'Correo', ''], filas)
+    ? tablaDensa(['Nombre', 'Rol', 'Correo', 'Horarios', ''], filas)
     : el('div', { class: 'empty', text: 'Todavía no hay integrantes.' }));
 
   const nuevo = el('input', { type: 'text', placeholder: 'Nombre', style: 'max-width:220px' });
@@ -944,6 +1087,8 @@ function vistaEquipo(raiz) {
     nuevo, correo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
   ]));
   raiz.appendChild(card);
+
+  if (personaHorario) raiz.appendChild(editorHorarios(personaHorario));
 
   /* Enlaces generales de la secretaría */
   const card2 = el('div', { class: 'card compacta' }, [
@@ -982,8 +1127,86 @@ function vistaEquipo(raiz) {
   raiz.appendChild(card2);
 }
 
+/* Editor de horarios: en qué tramos puede cada persona, día por día.
+   De aquí salen los avisos al agendar. */
+function editorHorarios(id) {
+  const p = Datos.todo('integrantes').find(i => i.id === id);
+  if (!p) return el('div', {});
+  if (!p.disponibilidad) p.disponibilidad = {};
+
+  const card = el('div', { class: 'card compacta' });
+  const cuerpo = el('div', {});
+
+  /* Guardar refresca el editor y, de paso, el resumen que se ve en la tabla,
+     sin rehacer la página para no perder el foco mientras se escribe una hora. */
+  const guardar = () => {
+    Datos.guardar('integrantes', p);
+    pintar();
+    const resumen = document.querySelector(`[data-horario="${p.id}"]`);
+    if (resumen) resumen.textContent = resumenHorario(p);
+  };
+
+  const pintar = () => {
+    cuerpo.innerHTML = '';
+    DIAS.forEach(d => {
+      const tramos = p.disponibilidad[d.n] || [];
+      const fila = el('div', { class: 'horario' }, [
+        el('span', { class: 'dia-nombre', text: d.corto })
+      ]);
+      const caja = el('div', { class: 'tramos' });
+      tramos.forEach((t, i) => {
+        const desde = el('input', { type: 'time', value: t[0] });
+        const hasta = el('input', { type: 'time', value: t[1] });
+        desde.addEventListener('change', () => { t[0] = desde.value; guardar(); });
+        hasta.addEventListener('change', () => { t[1] = hasta.value; guardar(); });
+        caja.appendChild(el('span', { class: 'tramo' }, [
+          desde, el('span', { text: '–' }), hasta,
+          el('button', { class: 'x', type: 'button', text: '✕', title: 'Quitar tramo',
+            onclick: () => { tramos.splice(i, 1); p.disponibilidad[d.n] = tramos; guardar(); } })
+        ]));
+      });
+      if (!tramos.length) caja.appendChild(el('span', { class: 'sin-tramo', text: 'no disponible' }));
+      caja.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: '+',
+        title: 'Agregar tramo',
+        onclick: () => {
+          p.disponibilidad[d.n] = [...tramos, ['09:00', '18:00']];
+          guardar();
+        } }));
+      fila.appendChild(caja);
+      cuerpo.appendChild(fila);
+    });
+  };
+  pintar();
+
+  card.appendChild(el('div', { class: 'toolbar' }, [
+    el('div', {}, [
+      el('h2', { text: 'Horarios de ' + (p.nombre || 'la persona') }),
+      el('div', { class: 'sub', text: 'En qué tramos puede. Al agendar, la aplicación avisa si algo se sale de acá.' })
+    ]),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'L a V · 9 a 18', onclick: () => {
+      p.disponibilidad = { 1: [['09:00', '18:00']], 2: [['09:00', '18:00']], 3: [['09:00', '18:00']],
+        4: [['09:00', '18:00']], 5: [['09:00', '18:00']] };
+      guardar();
+    } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Tardes L a V', onclick: () => {
+      p.disponibilidad = { 1: [['15:00', '20:00']], 2: [['15:00', '20:00']], 3: [['15:00', '20:00']],
+        4: [['15:00', '20:00']], 5: [['15:00', '20:00']] };
+      guardar();
+    } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Limpiar',
+      onclick: () => { p.disponibilidad = {}; guardar(); } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Cerrar',
+      onclick: () => { personaHorario = null; render(); } })
+  ]));
+  card.appendChild(cuerpo);
+  card.appendChild(el('div', { class: 'note', style: 'margin-top:10px', text:
+    'Quien no tenga horarios cargados aparece como "sin definir": la aplicación igual deja agendar, ' +
+    'pero avisa que no sabe si puede.' }));
+  return card;
+}
+
 /* ------------------------------------------------------------------ *
- * 8. Filtros, router y arranque
+ * 9. Filtros, router y arranque
  * ------------------------------------------------------------------ */
 function poblarFiltros() {
   const set = (sel, opciones, valor, vacio) => {

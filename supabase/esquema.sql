@@ -79,13 +79,19 @@ create table if not exists agenda (
   gcal_id   text
 );
 
+-- 'disponibilidad' guarda los tramos horarios de cada persona, por día de la
+-- semana: {"1": [["09:00","13:00"],["15:00","18:30"]], "2": [...]}
+-- donde 1 es lunes y 7 domingo. Sirve para avisar cuando una reunión choca.
 create table if not exists integrantes (
-  id     text primary key,
-  nombre text,
-  rol    text,
-  correo text,
-  notas  text
+  id             text primary key,
+  nombre         text,
+  rol            text,
+  correo         text,
+  notas          text,
+  disponibilidad jsonb default '{}'::jsonb
 );
+
+alter table integrantes add column if not exists disponibilidad jsonb default '{}'::jsonb;
 
 -- Enlaces a carpetas de Drive, cronogramas y documentos. Si 'proyecto' viene
 -- vacío, el enlace es general de la secretaría.
