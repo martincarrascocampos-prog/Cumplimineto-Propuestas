@@ -833,8 +833,7 @@ function vistaPanel(raiz) {
         'cinco etapas que se puede aplicar de una vez a muchas propuestas.' }),
       el('p', { text:
         'En Programa está el documento completo: en Lectura, el texto tal cual fue escrito; en PDF original, ' +
-        'las 57 páginas como se imprimen, para verlas y descargar el archivo. En Datos se exporta todo a ' +
-        'JSON o a Excel.' })
+        'las 57 páginas como se imprimen, para verlas y descargar el archivo.' })
     ])
   ]));
 }
@@ -1321,127 +1320,7 @@ function programaLectura(raiz) {
 }
 
 /* ------------------------------------------------------------------ *
- * 12. Vista: Datos
- * ------------------------------------------------------------------ */
-function descargar(nombre, contenido, tipo) {
-  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
-  const a = el('a', { href: url, download: nombre });
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-function aCSV() {
-  const cab = ['codigo', 'eje', 'subeje', 'propuesta', 'equipo', 'estado', 'avance', 'proyeccion',
-    'plazo', 'etapas_completadas', 'etapas_totales', 'observaciones', 'texto_programa'];
-  const esc = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const filas = estado.propuestas.map(p => [
-    p.c, (ejeDe(p.eje) || {}).nombre || p.eje, p.sub, p.t,
-    (equipoDe(p.eq) || {}).nombre || '', estadoDe(p.estado).txt,
-    avanceReal(p), avanceProyectado(p), p.fecha,
-    (p.etapas || []).filter(e => e.ok).length, (p.etapas || []).length,
-    (p.obs || []).map(o => `${o.f}: ${o.t}`).join(' | '), p.d || ''
-  ].map(esc).join(','));
-  return '﻿' + [cab.join(','), ...filas].join('\n');
-}
-
-function vistaDatos(raiz) {
-  const r = resumen(estado.propuestas);
-  const admin = perfil.rol === 'admin';
-
-  const acciones = el('div', { class: 'toolbar' }, [
-    el('button', { class: 'btn btn-primary', type: 'button', text: 'Exportar JSON', onclick: () =>
-      descargar('conectometro.json', JSON.stringify(
-        { version: 3, exportado: new Date().toISOString(), tablas: Datos.tablas }, null, 2),
-        'application/json') }),
-    el('button', { class: 'btn', type: 'button', text: 'Exportar CSV (Excel)', onclick: () =>
-      descargar('conectometro.csv', aCSV(), 'text/csv;charset=utf-8') })
-  ]);
-
-  const entrada = el('input', { type: 'file', accept: '.json', style: 'display:none' });
-  entrada.addEventListener('change', () => {
-    const f = entrada.files[0];
-    if (!f) return;
-    const lector = new FileReader();
-    lector.onload = () => {
-      try {
-        const d = JSON.parse(lector.result);
-        const tablas = d.tablas || d;
-        let n = 0;
-        ['equipos', 'seguimiento', 'observaciones', 'proyectos', 'pasos', 'hitos',
-         'agenda', 'integrantes', 'enlaces'].forEach(t => {
-          (tablas[t] || []).forEach(fila => { Datos.guardar(t, fila); n++; });
-        });
-        estado = construir();
-        render();
-        alert('Datos importados: ' + n + ' registros.');
-      } catch (e) { alert('El archivo no tiene el formato esperado.'); }
-    };
-    lector.readAsText(f);
-  });
-  if (admin) {
-    acciones.appendChild(el('button', { class: 'btn', type: 'button', text: 'Importar JSON',
-      onclick: () => entrada.click() }));
-    acciones.appendChild(el('button', { class: 'btn', type: 'button', text: 'Borrar todo el avance',
-      onclick: () => {
-        if (!confirm('Se borrará el avance, las etapas, los proyectos y las observaciones, y se volverá ' +
-          'a las 102 propuestas del programa sin tocar. ¿Continuar?')) return;
-        ['seguimiento', 'observaciones', 'pasos', 'hitos', 'proyectos'].forEach(t =>
-          Datos.todo(t).slice().forEach(f => Datos.borrar(t, f.id)));
-        estado = construir();
-        render();
-      } }));
-  }
-  acciones.appendChild(entrada);
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Datos del sistema' }),
-    el('div', { class: 'sub', text:
-      `${estado.propuestas.length} propuestas · ${estado.ejes.length} ejes · ${estado.equipos.length} equipos · ${r.conEtapas} con etapas` }),
-    acciones,
-    el('div', { class: 'note', text:
-      'Todo se guarda en el almacenamiento local de este navegador. Exporta el JSON para respaldar ' +
-      'o para mover los datos a otro computador; el CSV sirve para abrirlo en Excel.' })
-  ]));
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Cómo se calcula' }),
-    el('div', { class: 'sub', text: 'Reglas del indicador' }),
-    el('div', { class: 'note' }, [
-      el('p', { text: 'Cumplimiento = promedio del avance (0–100%) de las propuestas vigentes. Las cumplidas valen 100% y las descartadas quedan fuera.' }),
-      el('p', { text: 'Si una propuesta tiene etapas, su avance es el porcentaje de etapas completadas; si no, se escribe a mano.' }),
-      el('p', { text: 'Proyección al cierre = avance actual + una parte de lo que falta según el estado: en progreso 60%, no iniciada 30%, en riesgo 20%.' }),
-      el('p', { text: 'Umbrales: bajo la media <50% · media 50% · mínimo 70% · ideal 80% · logro 90%.' })
-    ]),
-    el('div', { style: 'margin-top:12px' }, tablaResumen([{ nombre: 'Programa completo', ...r }], 'Alcance'))
-  ]));
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Dónde se están guardando los datos' }),
-    el('div', { class: 'sub', text: Datos.modo === 'supabase' ? 'Base compartida' : 'Sólo este navegador' }),
-    el('div', { class: 'note' }, [
-      el('p', { text: Datos.modo === 'supabase'
-        ? 'Conectado a la base compartida: lo que edites lo ve todo el equipo.'
-        : 'Los datos viven en este navegador. Para que el equipo vea lo mismo hay que publicar la ' +
-          'aplicación con la conexión a Supabase configurada en el servidor (ver PUBLICAR.md).' }),
-      Datos.mensaje ? el('p', { text: Datos.mensaje }) : null
-    ].filter(Boolean)),
-    el('div', { class: 'toolbar', style: 'margin-top:12px' },
-      el('a', { class: 'btn', href: 'spt.html', text: 'Ir al SPT · Participación' }))
-  ]));
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Accesos (próxima etapa)' }),
-    el('div', { class: 'sub', text: 'Lo que hoy es un selector, mañana es un login' }),
-    el('div', { class: 'note', text:
-      'El selector de arriba simula tres perfiles: Mesa Ejecutiva (edita todo), Coordinación de equipo ' +
-      '(edita avances, etapas y observaciones) y Lectura (solo consulta). Para accesos reales con usuario ' +
-      'y contraseña, y datos compartidos entre varias personas, hace falta un servidor con base de datos: ' +
-      'el JSON que exporta esta versión ya tiene la forma que necesitaría esa migración.' })
-  ]));
-}
-
-/* ------------------------------------------------------------------ *
- * 13. Router, filtros y arranque
+ * 12. Router, filtros y arranque
  * ------------------------------------------------------------------ */
 function poblarFiltros() {
   const fEq = $('#f-equipo'), fEje = $('#f-eje'), fEst = $('#f-estado');
@@ -1461,13 +1340,11 @@ function render() {
   UI.pintarConexion(document.querySelector('#conexion'));
   const raiz = $('#vista');
   raiz.innerHTML = '';
-  $('#filtros').style.display = (vista === 'datos') ? 'none' : '';
-  if (vista === 'panel') vistaPanel(raiz);
-  else if (vista === 'propuestas') vistaPropuestas(raiz);
+  if (vista === 'propuestas') vistaPropuestas(raiz);
   else if (vista === 'equipos') vistaEquipos(raiz);
   else if (vista === 'proyecto') vistaProyecto(raiz);
   else if (vista === 'programa') vistaPrograma(raiz);
-  else vistaDatos(raiz);
+  else vistaPanel(raiz);
 }
 
 async function iniciar() {

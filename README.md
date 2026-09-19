@@ -53,7 +53,6 @@ Los datos quedan guardados en ese navegador.
 - **Programa**: en *Lectura*, el documento completo en pantalla — contexto, introducción de cada
   eje y las propuestas con su texto tal como fue escrito. En *PDF original*, el archivo real:
   visor de las 57 páginas, galería de miniaturas y descarga.
-- **Datos**: exportar JSON y CSV (Excel), importar JSON, reiniciar al programa original.
 
 ## Cómo se calcula
 
