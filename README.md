@@ -10,6 +10,8 @@ Un proyecto del SPT con origen *Ejes del Programa* es una propuesta del programa
 las etapas de esa propuesta: marcar un paso en el SPT sube el cumplimiento en el Conectómetro.
 
 Para publicarlo en Replit con base compartida en Supabase, ver **[PUBLICAR.md](PUBLICAR.md)**.
+Para el paso a paso de todas las conexiones (GitHub, Replit, Supabase, Drive y cronogramas),
+ver **[CONECTAR.md](CONECTAR.md)**.
 
 Para una versión de **un solo archivo** que se abre con doble clic (las dos secciones y el PDF
 del programa adentro, sin carpeta ni servidor):
