@@ -1304,94 +1304,120 @@ let seccionEstatuto = null;      /* índice del título o capítulo elegido */
 function vistaPrograma(raiz) {
   const doc = DOCUMENTOS[docActual];
 
-  /* --- riel: qué documento, cómo verlo y por dónde entrar --- */
-  const riel = el('aside', { class: 'riel' });
+  /* Sub-pestañas: qué documento. Van arriba del todo, como en U-Cursos,
+     no en una tarjeta al costado. */
+  const subnav = el('nav', { class: 'subnav', 'aria-label': 'Documento' });
+  Object.values(DOCUMENTOS).forEach(d => subnav.appendChild(el('button', {
+    class: 'sub-tab', type: 'button', 'aria-selected': String(d.clave === docActual),
+    onclick: () => { docActual = d.clave; seccionEstatuto = null; render(); }
+  }, [UI.icono(d.icono, 17), el('span', { text: d.nombre })])));
+  raiz.appendChild(subnav);
 
-  const elegir = el('div', { class: 'card' }, el('h3', { text: 'Documentos' }));
-  Object.values(DOCUMENTOS).forEach(d => {
-    elegir.appendChild(el('button', {
-      class: 'doc-boton' + (d.clave === docActual ? ' activo' : ''), type: 'button',
-      onclick: () => { docActual = d.clave; seccionEstatuto = null; render(); }
-    }, [
-      UI.icono(d.icono, 22),
-      el('span', {}, [el('b', { text: d.nombre }),
-        el('i', { text: `${d.paginas} páginas` })])
-    ]));
-  });
-  riel.appendChild(elegir);
-
-  const modo = el('div', { class: 'card' }, [
-    el('h3', { text: 'Cómo verlo' }),
-    el('div', { class: 'seg vertical' }, [
-      el('button', { type: 'button', text: 'Lectura', 'aria-pressed': String(subPrograma === 'lectura'),
-        onclick: () => { subPrograma = 'lectura'; render(); } }),
-      el('button', { type: 'button', text: 'PDF original', 'aria-pressed': String(subPrograma === 'pdf'),
-        onclick: () => { subPrograma = 'pdf'; render(); } })
+  /* Franja de datos del documento y cómo verlo. */
+  const cuenta = docActual === 'estatutos' && typeof ESTATUTOS !== 'undefined'
+    ? `${ESTATUTOS.articulos} artículos` : '102 propuestas';
+  raiz.appendChild(el('div', { class: 'doc-barra' }, [
+    el('div', { class: 'doc-datos' }, [
+      el('b', { text: doc.nombre }),
+      el('span', { text: `${doc.paginas} páginas · ${cuenta} · ${doc.bajada}` })
     ]),
-    el('a', { class: 'btn btn-sm', style: 'margin-top:9px; justify-content:center',
-      href: doc.pdf(), download: doc.descarga, text: '↓ Descargar el PDF' }),
-    el('a', { class: 'btn btn-sm', style: 'margin-top:6px; justify-content:center',
-      href: doc.pdf(), target: '_blank', rel: 'noopener', text: 'Abrir en otra pestaña' })
-  ]);
-  riel.appendChild(modo);
+    el('div', { class: 'doc-acciones' }, [
+      el('div', { class: 'seg' }, [
+        el('button', { type: 'button', text: 'Lectura',
+          'aria-pressed': String(subPrograma === 'lectura'),
+          onclick: () => { subPrograma = 'lectura'; render(); } }),
+        el('button', { type: 'button', text: 'PDF original',
+          'aria-pressed': String(subPrograma === 'pdf'),
+          onclick: () => { subPrograma = 'pdf'; render(); } })
+      ]),
+      el('a', { class: 'btn btn-sm', href: doc.pdf(), download: doc.descarga,
+        text: '↓ Descargar' }),
+      el('a', { class: 'btn btn-sm', href: doc.pdf(), target: '_blank', rel: 'noopener',
+        text: 'Abrir aparte' })
+    ])
+  ]));
 
+  /* El índice, también arriba: una fila de enlaces, no una columna. */
   if (subPrograma === 'lectura') {
-    riel.appendChild(docActual === 'programa' ? indicePrograma() : indiceEstatutos());
+    raiz.appendChild(docActual === 'programa' ? indicePrograma() : indiceEstatutos());
   }
 
-  /* --- contenido --- */
-  const centro = el('div', {});
-  const cab = el('div', { class: 'barra-seccion' }, [
-    el('div', {}, [
-      el('h2', { text: doc.nombre }),
-      el('div', { class: 'sub', text: subPrograma === 'lectura'
-        ? doc.bajada : `El documento original: ${doc.paginas} páginas tal cual.` })
-    ]),
-    el('span', { class: 'mini', style: 'color:#a9c4c3',
-      text: docActual === 'estatutos' && typeof ESTATUTOS !== 'undefined'
-        ? `${ESTATUTOS.articulos} artículos` : '102 propuestas' })
-  ]);
-  const cuerpo = el('div', { class: 'card con-barra' }, cab);
-  centro.appendChild(cuerpo);
+  const cuerpo = el('div', { class: 'doc-cuerpo' });
+  raiz.appendChild(cuerpo);
 
   if (subPrograma === 'pdf') visorPDF(cuerpo, doc);
   else if (docActual === 'programa') programaLectura(cuerpo);
   else estatutosLectura(cuerpo);
-
-  raiz.appendChild(el('div', { class: 'columnas' }, [riel, centro]));
 }
 
 function indicePrograma() {
   const ejeFiltrado = filtros.eje ? Number(filtros.eje) : null;
-  const caja = el('div', { class: 'card' }, el('h3', { text: 'Ejes del programa' }));
-  const lista = el('div', { class: 'indice-riel' });
-  lista.appendChild(el('button', {
-    class: 'ir' + (ejeFiltrado ? '' : ' activo'), type: 'button', text: 'Todo el programa',
-    onclick: () => { filtros.eje = ''; poblarFiltros(); render(); } }));
-  estado.ejes.forEach(ej => lista.appendChild(el('button', {
-    class: 'ir' + (ejeFiltrado === ej.id ? ' activo' : ''), type: 'button',
-    text: `${ej.id}. ${ej.corto || ej.nombre}`,
+  const fila = el('div', { class: 'doc-indice' }, [
+    el('span', { class: 'ix-rotulo', text: 'Ejes' }),
+    el('button', { class: 'ix' + (ejeFiltrado ? '' : ' activo'), type: 'button',
+      text: 'Todos', onclick: () => { filtros.eje = ''; poblarFiltros(); render(); } })
+  ]);
+  estado.ejes.forEach(ej => fila.appendChild(el('button', {
+    class: 'ix' + (ejeFiltrado === ej.id ? ' activo' : ''), type: 'button',
+    title: ej.nombre, text: `${ej.id}. ${ej.corto || ej.nombre}`,
     onclick: () => { filtros.eje = String(ej.id); poblarFiltros(); render(); } })));
-  caja.appendChild(lista);
-  return caja;
+  return fila;
 }
 
+/* Dos niveles: los títulos siempre visibles y, al entrar en uno, sus
+   capítulos en una segunda fila. Así el índice cabe arriba sin ser una
+   lista interminable. */
 function indiceEstatutos() {
-  const caja = el('div', { class: 'card' }, el('h3', { text: 'Índice' }));
-  const lista = el('div', { class: 'indice-riel' });
-  lista.appendChild(el('button', {
-    class: 'ir' + (seccionEstatuto === null ? ' activo' : ''), type: 'button',
-    text: 'Todo el estatuto',
-    onclick: () => { seccionEstatuto = null; render(); } }));
-  ESTATUTOS.indice.forEach((entrada, i) => {
-    const [tipo, pagina, texto] = entrada;
-    lista.appendChild(el('button', {
-      class: 'ir ' + tipo + (seccionEstatuto === i ? ' activo' : ''), type: 'button',
-      title: texto + ` · página ${pagina}`,
-      text: UI.recorta(texto.replace(/\s*\(p\.\s*\d+\)\s*$/, ''), tipo === 'capitulo' ? 46 : 52),
+  const limpio = t => t.replace(/\s*\(p\.\s*\d+\)\s*$/, '');
+  const caja = el('div', {});
+
+  const titulos = ESTATUTOS.indice
+    .map((e, i) => ({ e, i })).filter(({ e }) => e[0] === 'titulo');
+
+  /* En qué título estoy: el elegido, o el que contiene al capítulo elegido. */
+  let tituloActivo = null;
+  if (seccionEstatuto !== null) {
+    const previos = titulos.filter(({ i }) => i <= seccionEstatuto);
+    tituloActivo = previos.length ? previos[previos.length - 1].i : null;
+  }
+
+  const fila = el('div', { class: 'doc-indice' }, [
+    el('span', { class: 'ix-rotulo', text: 'Títulos' }),
+    el('button', { class: 'ix' + (seccionEstatuto === null ? ' activo' : ''), type: 'button',
+      text: 'Todo el estatuto', onclick: () => { seccionEstatuto = null; render(); } })
+  ]);
+  titulos.forEach(({ e, i }) => {
+    const nombre = limpio(e[2]);
+    const corto = nombre.replace(/^T[ÍI]TULO\s+/i, '').replace(/^T[íi]tulo\s+/, '');
+    fila.appendChild(el('button', {
+      class: 'ix' + (tituloActivo === i ? ' activo' : ''), type: 'button',
+      title: nombre + ' · página ' + e[1],
+      text: UI.recorta(corto, 30),
       onclick: () => { seccionEstatuto = i; render(); } }));
   });
-  caja.appendChild(lista);
+  caja.appendChild(fila);
+
+  /* Capítulos del título en que estoy, si tiene. */
+  if (tituloActivo !== null) {
+    const siguiente = titulos.find(({ i }) => i > tituloActivo);
+    const hasta = siguiente ? siguiente.i : ESTATUTOS.indice.length;
+    const caps = ESTATUTOS.indice.map((e, i) => ({ e, i }))
+      .filter(({ e, i }) => e[0] === 'capitulo' && i > tituloActivo && i < hasta);
+    if (caps.length) {
+      const fila2 = el('div', { class: 'doc-indice segunda' }, [
+        el('span', { class: 'ix-rotulo', text: 'Capítulos' }),
+        el('button', { class: 'ix' + (seccionEstatuto === tituloActivo ? ' activo' : ''),
+          type: 'button', text: 'Todo el título',
+          onclick: () => { seccionEstatuto = tituloActivo; render(); } })
+      ]);
+      caps.forEach(({ e, i }) => fila2.appendChild(el('button', {
+        class: 'ix' + (seccionEstatuto === i ? ' activo' : ''), type: 'button',
+        title: e[2] + ' · página ' + e[1],
+        text: UI.recorta(limpio(e[2]).replace(/^Cap[íi]tulo\s+/i, ''), 40),
+        onclick: () => { seccionEstatuto = i; render(); } })));
+      caja.appendChild(fila2);
+    }
+  }
   return caja;
 }
 
@@ -1420,16 +1446,11 @@ function visorPDF(raiz, doc) {
   }
   indicador.textContent = `Página 1 de ${doc.paginas}`;
 
-  raiz.appendChild(el('div', { class: 'pdfbar' }, [
-    el('a', { class: 'btn btn-sm btn-primary', href: url, download: doc.descarga,
-      text: '↓ Descargar' }),
-    el('a', { class: 'btn btn-sm', href: url, target: '_blank', rel: 'noopener',
-      text: 'Abrir en otra pestaña' }),
-    indicador
-  ]));
+  raiz.appendChild(el('div', { class: 'pdfbar' }, [indicador]));
   raiz.appendChild(visor);
-  raiz.appendChild(el('div', { class: 'sec-titulo', style: 'padding:14px 14px 0' },
-    el('h2', { text: 'Páginas · toca una para abrirla arriba' })));
+  raiz.appendChild(el('h3', { class: 'doc-sub', text: 'Páginas' }));
+  raiz.appendChild(el('p', { class: 'doc-pista',
+    text: 'Toca una página para abrirla en el visor de arriba.' }));
   raiz.appendChild(galeria);
 }
 
@@ -1464,8 +1485,8 @@ function estatutosLectura(raiz) {
   bloques.forEach(([tipo, pagina, texto]) => {
     if (tipo === 'titulo') {
       doc.appendChild(el('h3', { class: 'legal-titulo' }, [
-        document.createTextNode(texto.replace(/\s*\(p\.\s*\d+\)\s*$/, '')),
-        el('span', { class: 'pag', text: 'p. ' + pagina })
+        el('span', { class: 'pag', text: 'Página ' + pagina + ' del PDF' }),
+        el('span', { class: 'txt', text: texto.replace(/\s*\(p\.\s*\d+\)\s*$/, '') })
       ]));
     } else if (tipo === 'capitulo') {
       doc.appendChild(el('h4', { class: 'legal-capitulo', text: texto }));
@@ -1483,12 +1504,12 @@ function estatutosLectura(raiz) {
   });
 
   if (!busca && seccionEstatuto === null && ESTATUTOS.vigencia.length) {
-    raiz.appendChild(el('div', { class: 'enlace-spt otro', style: 'margin:0 14px 12px' }, [
+    raiz.appendChild(el('div', { class: 'enlace-spt otro' }, [
       el('b', { text: 'Vigencia' }),
       el('ul', {}, ESTATUTOS.vigencia.map(v => el('li', { text: v })))
     ]));
   }
-  raiz.appendChild(el('div', { style: 'padding:0 14px 14px' }, doc));
+  raiz.appendChild(doc);
 }
 
 function programaLectura(raiz) {
@@ -1531,7 +1552,7 @@ function programaLectura(raiz) {
   });
 
   if (!doc.querySelector('.prop')) doc.appendChild(el('div', { class: 'empty', text: 'Ninguna propuesta coincide con el filtro.' }));
-  raiz.appendChild(el('div', { style: 'padding:0 14px 14px' }, doc));
+  raiz.appendChild(doc);
 }
 
 /* ------------------------------------------------------------------ *

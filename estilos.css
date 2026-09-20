@@ -879,64 +879,52 @@ nav.tabs{
 
 /* ==================================================================== *
  * Documentos: el programa y los estatutos
+ *
+ * Sin tarjetas: la navegación va arriba, en franjas separadas por una
+ * línea, como las sub-pestañas de U-Cursos. El texto queda sobre el papel.
  * ==================================================================== */
 
-.doc-boton{display:flex; align-items:center; gap:9px; width:100%; background:none;
-  border:1px solid transparent; border-radius:9px; padding:8px 9px; cursor:pointer;
-  text-align:left; color:var(--ink-2); margin-bottom:4px;
-  transition:background .15s var(--curva), border-color .15s var(--curva), color .15s var(--curva)}
-.doc-boton:hover{background:var(--crema); border-color:var(--border)}
-.doc-boton.activo{background:var(--crema); border-color:var(--accent-vivo); color:var(--ink)}
-.doc-boton svg{flex:none; opacity:.75}
-.doc-boton.activo svg{opacity:1; color:var(--accent-vivo)}
-.doc-boton b{display:block; font-size:12.8px; line-height:1.25}
-.doc-boton i{display:block; font-style:normal; font-size:11px; color:var(--ink-muted)}
+.subnav{display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:0}
+.sub-tab{display:inline-flex; align-items:center; gap:7px; background:none; border:none;
+  border-bottom:3px solid transparent; margin-bottom:-1px; cursor:pointer;
+  padding:9px 15px; font-size:13.5px; color:var(--ink-muted);
+  transition:color .15s var(--curva), border-color .15s var(--curva)}
+.sub-tab svg{opacity:.7}
+.sub-tab:hover{color:var(--ink-2)}
+.sub-tab[aria-selected="true"]{color:var(--accent-vivo); border-bottom-color:var(--accent-vivo);
+  font-weight:600}
+.sub-tab[aria-selected="true"] svg{opacity:1}
 
-.seg.vertical{display:flex; flex-direction:column; width:100%; gap:2px; padding:3px}
-.seg.vertical button{width:100%; text-align:center}
+.doc-barra{display:flex; align-items:center; justify-content:space-between; gap:14px;
+  flex-wrap:wrap; padding:11px 2px; border-bottom:1px solid var(--border)}
+.doc-datos b{display:block; font-size:15.5px; color:var(--ink); letter-spacing:-.01em}
+.doc-datos span{display:block; font-size:12px; color:var(--ink-muted); margin-top:1px}
+.doc-acciones{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 
-.indice-riel{display:flex; flex-direction:column; gap:1px; max-height:380px; overflow-y:auto;
-  margin:0 -4px}
-.indice-riel .ir{background:none; border:none; border-left:2px solid transparent; cursor:pointer;
-  text-align:left; padding:5px 8px; font-size:12px; line-height:1.3; color:var(--ink-2);
-  border-radius:0 5px 5px 0; transition:background .14s var(--curva), color .14s var(--curva)}
-.indice-riel .ir:hover{background:var(--crema); color:var(--ink)}
-.indice-riel .ir.activo{background:var(--crema); border-left-color:var(--accent-vivo);
-  color:var(--ink); font-weight:600}
-.indice-riel .ir.capitulo{padding-left:18px; font-size:11.5px; color:var(--ink-muted)}
-.indice-riel .ir.capitulo:hover,.indice-riel .ir.capitulo.activo{color:var(--ink-2)}
+.doc-indice{display:flex; align-items:baseline; gap:3px 5px; flex-wrap:wrap;
+  padding:9px 2px; border-bottom:1px solid var(--border)}
+.doc-indice.segunda{background:var(--crema); padding-left:10px; padding-right:10px;
+  margin:0 -10px}
+.ix-rotulo{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--ink-muted); margin-right:5px; flex:none}
+.ix{background:none; border:none; cursor:pointer; padding:3px 8px; border-radius:5px;
+  font-size:12.3px; line-height:1.3; color:var(--ink-2);
+  transition:background .14s var(--curva), color .14s var(--curva)}
+.ix:hover{background:var(--crema); color:var(--ink)}
+.doc-indice.segunda .ix:hover{background:var(--surface)}
+.ix.activo{background:var(--accent-vivo); color:#fff; font-weight:600}
+.ix.activo:hover{background:var(--accent-vivo); color:#fff}
 
-/* --- texto legal: se lee como un estatuto, no como una web ---------- */
-.doc-legal{max-width:none}
-.doc-legal p{text-align:justify; hyphens:auto; margin:0 0 9px; line-height:1.62;
-  font-size:14.2px}
-/* Sin flex: un elemento con column-span:all y display:flex se recorta en
-   Chromium, y se pierde la primera letra del título. */
-.legal-titulo{margin:26px 0 4px; font-size:14px; text-transform:uppercase;
-  letter-spacing:.045em; color:var(--ink); border-bottom:2px solid var(--ramp-1);
-  padding-bottom:5px; display:block}
-.doc-legal > .legal-titulo:first-child{margin-top:4px}
-.legal-titulo .pag{float:right; margin-left:12px; font-size:11px; letter-spacing:0;
-  text-transform:none; color:var(--ink-muted); font-weight:400}
-.legal-capitulo{margin:17px 0 6px; font-size:13.5px; color:var(--accent-vivo);
-  font-weight:600; letter-spacing:.01em}
-.legal-articulo{margin-top:12px}
-.legal-articulo b{color:var(--ink)}
-.legal-letra{padding-left:22px; position:relative}
-.legal-letra::before{content:''; position:absolute; left:8px; top:.65em; width:5px; height:5px;
-  border-radius:50%; background:var(--ramp-2)}
-@media (min-width:1100px){
-  .doc-legal{column-count:2; column-gap:34px}
-  .doc-legal .legal-titulo{column-span:all}
-  /* Un artículo o un inciso no se parte entre columnas: cortarlo a la mitad
-     es justo lo que hace ilegible un estatuto. */
-  .doc-legal p{break-inside:avoid}
-  .doc-legal .legal-capitulo{break-after:avoid}
-}
+.doc-cuerpo{padding-top:16px}
+.doc-sub{font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink);
+  margin:22px 0 2px; padding-bottom:5px; border-bottom:1px solid var(--border)}
+.doc-pista{font-size:12px; color:var(--ink-muted); margin:6px 0 10px}
+.doc-cuerpo .pdfbar{padding:0 0 9px; justify-content:flex-end}
+.doc-cuerpo .visor{border-radius:9px}
+.doc-cuerpo .galeria{padding:0}
+.doc-cuerpo .enlace-spt{margin:0 0 16px}
 
-.card.con-barra .visor{border-radius:0; border-left:none; border-right:none}
-.card.con-barra .pdfbar{padding:0 14px 12px}
-.card.con-barra .galeria{padding:10px 14px 14px}
+
 
 /* --- la bisagra entre el Conectómetro y el SPT ----------------------- */
 .enlace-spt{border-radius:10px; padding:10px 12px; font-size:12.8px; line-height:1.55;
@@ -961,4 +949,33 @@ nav.tabs{
   .riel{order:2}
   .riel .btn-crear{display:none}
   .solo-angosto{display:inline-flex}
+}
+
+/* --- texto legal: se lee como un estatuto, no como una web ------------ */
+.doc-legal{max-width:none}
+.doc-legal p{text-align:justify; hyphens:auto; margin:0 0 9px; line-height:1.62;
+  font-size:14.2px}
+/* Sin flex ni float: un elemento con column-span:all se porta mal con los
+   dos, y el número de página terminaba pegado al título. */
+.legal-titulo{margin:26px 0 4px; font-size:14px; text-transform:uppercase;
+  letter-spacing:.045em; color:var(--ink); border-bottom:2px solid var(--ramp-1);
+  padding-bottom:5px; display:block}
+.legal-titulo .txt{display:block}
+.legal-titulo .pag{display:block; font-size:10.5px; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--ink-muted); font-weight:400; margin-bottom:3px}
+.doc-legal > .legal-titulo:first-child{margin-top:4px}
+.legal-capitulo{margin:17px 0 6px; font-size:13.5px; color:var(--accent-vivo);
+  font-weight:600; letter-spacing:.01em}
+.legal-articulo{margin-top:12px}
+.legal-articulo b{color:var(--ink)}
+.legal-letra{padding-left:22px; position:relative}
+.legal-letra::before{content:''; position:absolute; left:8px; top:.65em; width:5px; height:5px;
+  border-radius:50%; background:var(--ramp-2)}
+@media (min-width:1100px){
+  .doc-legal{column-count:2; column-gap:34px}
+  .doc-legal .legal-titulo{column-span:all}
+  /* Un artículo o un inciso no se parte entre columnas: cortarlo a la mitad
+     es justo lo que hace ilegible un estatuto. */
+  .doc-legal p{break-inside:avoid}
+  .doc-legal .legal-capitulo{break-after:avoid}
 }
