@@ -16,7 +16,8 @@ const CLAVE_CONEXION = 'conectometro/conexion';
 /* Tablas de la base. El catálogo del programa (las 102 propuestas y su texto)
    no está acá: es fijo y viaja en data.js. */
 const TABLAS = ['equipos', 'seguimiento', 'observaciones', 'proyectos', 'pasos',
-                'hitos', 'agenda', 'integrantes', 'enlaces', 'calendarios'];
+                'hitos', 'agenda', 'integrantes', 'enlaces', 'calendarios',
+                'puntos', 'pizarras', 'pizarra_items'];
 
 const vacio = () => TABLAS.reduce((a, t) => (a[t] = [], a), {});
 
@@ -263,10 +264,34 @@ const Modelo = {
     return Datos.todo('proyectos').find(p => p.propuesta === codigo) || null;
   },
 
+  /* Los pasos de primer nivel. Los sub-pasos cuelgan de uno y se piden
+     aparte: para el Conectómetro una etapa es un paso de primer nivel, y
+     los sub-pasos son el detalle de adentro. */
   pasosDe(proyectoId) {
+    return Datos.todo('pasos')
+      .filter(p => p.proyecto === proyectoId && !p.padre)
+      .sort((a, b) => (a.n || 0) - (b.n || 0));
+  },
+
+  /* Todos, con sub-pasos incluidos: sirve para contar y para buscar. */
+  pasosTodosDe(proyectoId) {
     return Datos.todo('pasos')
       .filter(p => p.proyecto === proyectoId)
       .sort((a, b) => (a.n || 0) - (b.n || 0));
+  },
+
+  subDe(pasoId) {
+    return Datos.todo('pasos')
+      .filter(p => p.padre === pasoId)
+      .sort((a, b) => (a.n || 0) - (b.n || 0));
+  },
+
+  /* Un paso con sub-pasos está listo cuando lo están todos los suyos: así no
+     hay que acordarse de marcar el de arriba. */
+  pasoListo(paso) {
+    const hijos = this.subDe(paso.id);
+    if (!hijos.length) return paso.estado === 'Completado';
+    return hijos.every(h => h.estado === 'Completado');
   },
 
   /* Los pasos del proyecto son las etapas de la propuesta. */
@@ -301,16 +326,23 @@ const Modelo = {
   },
 
   agregarPaso(proyectoId, descripcion, extra) {
-    const n = this.pasosDe(proyectoId).length + 1;
+    const n = this.pasosTodosDe(proyectoId).length + 1;
     return Datos.guardar('pasos', Object.assign({
       id: uid(), proyecto: proyectoId, n, descripcion,
       plazo: '', estado: 'Pendiente', encargados: []
     }, extra || {}));
   },
 
+  /* Un paso con sub-pasos vale lo que lleven ellos: media hecha cuenta como
+     media, no como cero. */
   avancePorPasos(pasos) {
     if (!pasos.length) return null;
-    return Math.round(pasos.filter(p => p.estado === 'Completado').length / pasos.length * 100);
+    const suma = pasos.reduce((a, p) => {
+      const hijos = this.subDe(p.id);
+      if (!hijos.length) return a + (p.estado === 'Completado' ? 1 : 0);
+      return a + hijos.filter(h => h.estado === 'Completado').length / hijos.length;
+    }, 0);
+    return Math.round(suma / pasos.length * 100);
   }
 };
 
@@ -371,6 +403,63 @@ const UI = {
       b.appendChild(UI.el('span', { text: texto }));
     });
   },
+  /* Una ventana que se abre y se cierra: el título manda, la flecha gira y
+     el contenido baja. Sirve para no tener que desplazarse por toda la
+     pantalla buscando una cosa. Recuerda si estaba abierta. */
+  abiertas: {},
+  seccion(clave, titulo, bajada, contenido, opciones = {}) {
+    const abierta = clave in UI.abiertas ? UI.abiertas[clave]
+      : (opciones.abierta !== undefined ? opciones.abierta : true);
+    const cuerpo = UI.el('div', { class: 'acc-cuerpo' });
+    (Array.isArray(contenido) ? contenido : [contenido]).forEach(c => c && cuerpo.appendChild(c));
+
+    const flecha = UI.el('i', { class: 'acc-flecha', 'aria-hidden': 'true' });
+    const cabeza = UI.el('button', {
+      class: 'acc-cab', type: 'button', 'aria-expanded': String(abierta),
+      onclick: () => {
+        const ahora = cabeza.getAttribute('aria-expanded') !== 'true';
+        UI.abiertas[clave] = ahora;
+        cabeza.setAttribute('aria-expanded', String(ahora));
+        caja.classList.toggle('cerrada', !ahora);
+        /* Los gráficos se miden al dibujarse: si estaban dentro de una
+           ventana cerrada, medían cero. Al abrirla se vuelven a pintar. */
+        if (ahora && UI.alAbrir) requestAnimationFrame(() => UI.alAbrir());
+      }
+    }, [
+      flecha,
+      UI.el('span', { class: 'acc-tit' }, [
+        UI.el('b', { text: titulo }),
+        bajada ? UI.el('span', { text: bajada }) : null
+      ].filter(Boolean)),
+      opciones.marca ? UI.el('span', { class: 'acc-marca', text: opciones.marca }) : null
+    ].filter(Boolean));
+
+    const caja = UI.el('section', { class: 'acc' + (abierta ? '' : ' cerrada') +
+      (opciones.clase ? ' ' + opciones.clase : '') }, [cabeza, cuerpo]);
+    return caja;
+  },
+
+  /* Convierte en ventana plegable toda tarjeta que tenga título. Así no hay
+     que tocar cada pantalla una por una y el comportamiento es el mismo en
+     todas partes: título, flecha que gira, contenido que baja. */
+  alAbrir: null,
+  plegarTarjetas(raiz, prefijo) {
+    raiz.querySelectorAll(':scope > .card').forEach((card, i) => {
+      const h2 = card.querySelector(':scope > h2, :scope > .toolbar h2');
+      if (!h2 || card.dataset.plegada) return;
+      const sub = card.querySelector(':scope > .sub, :scope > .toolbar .sub');
+      const titulo = h2.textContent;
+      const bajada = sub ? sub.textContent : '';
+      h2.remove(); if (sub) sub.remove();
+
+      const clave = `${prefijo}:${titulo}`;
+      card.dataset.plegada = '1';
+      const caja = UI.seccion(clave, titulo, bajada, [], { abierta: true });
+      raiz.insertBefore(caja, card);
+      caja.querySelector('.acc-cuerpo').appendChild(card);
+    });
+  },
+
   /* Migas de pan: dónde estoy dentro del sistema. */
   migas(nodo, pasos) {
     if (!nodo) return;

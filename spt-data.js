@@ -17,6 +17,15 @@ const SPT = {
     estadoProyecto: ['Activo', 'Terminado']
   },
 
+  /* Para registrar a quien viene de fuera de la secretaría: el resto de la
+     Mesa, y los espacios con que se trabaja seguido. */
+  equiposFECh: [
+    'Presidencia', 'Vicepresidencia', 'Secretaría General',
+    'Secretaría de Comunicaciones', 'Secretaría de Bienestar',
+    'Secretaría de Finanzas', 'Consejería', 'Centro de Estudiantes',
+    'Organización estudiantil', 'Otro'
+  ],
+
   /* Los enlaces que la secretaría tiene siempre a mano; las direcciones
      se pegan desde la aplicación. */
   enlacesBase: [

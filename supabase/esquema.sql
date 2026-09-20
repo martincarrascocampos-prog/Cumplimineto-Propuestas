@@ -121,6 +121,70 @@ alter table enlaces add column if not exists proyecto text;
 
 alter table pasos add column if not exists actualizado text;
 
+-- Un paso puede colgar de otro: así se subdivide el trabajo sin inventar otra
+-- tabla. 'padre' vacío = paso de primer nivel.
+alter table pasos add column if not exists padre         text;
+alter table pasos add column if not exists principal     text;   -- encargade principal del paso
+alter table pasos add column if not exists inicio        text default '';
+alter table pasos add column if not exists observaciones text default '';
+
+alter table proyectos add column if not exists observaciones text default '';
+alter table proyectos add column if not exists inicio        text default '';
+
+-- Gente de fuera de la secretaría que igual toma pasos o proyectos: se guarda
+-- con su equipo para saber a quién se le está pidiendo algo.
+alter table integrantes add column if not exists externo bool default false;
+alter table integrantes add column if not exists equipo  text;
+
+-- La reunión trae su enlace de videollamada y su acta.
+alter table agenda add column if not exists videollamada text default '';
+alter table agenda add column if not exists acta         text default '';
+
+-- La tabla de puntos de una reunión: qué se trata, quién lo trae y en qué quedó.
+create table if not exists puntos (
+  id          text primary key,
+  reunion     text not null,
+  texto       text,
+  responsable text,
+  acuerdo     text default '',
+  estado      text default 'Pendiente',
+  orden       int  default 0
+);
+
+-- ---------------------------------------------------------------------------
+-- Pizarra: un lienzo compartido por reunión. Cada cosa que se pone encima es
+-- una fila, para que dos personas puedan mover cosas distintas a la vez sin
+-- pisarse.
+-- ---------------------------------------------------------------------------
+create table if not exists pizarras (
+  id     text primary key,
+  nombre text,
+  creada timestamptz default now(),
+  orden  int default 0
+);
+
+-- tipo: nota · texto · tabla · dibujo · proyecto · conexion
+-- datos: lo propio de cada tipo (celdas de la tabla, trazo del dibujo,
+--        extremos de una conexión, si la ventana está reducida)
+create table if not exists pizarra_items (
+  id          text primary key,
+  pizarra     text not null,
+  tipo        text default 'nota',
+  x           int  default 40,
+  y           int  default 40,
+  ancho       int  default 220,
+  alto        int  default 150,
+  texto       text default '',
+  color       int  default 1,
+  datos       jsonb default '{}'::jsonb,
+  orden       int  default 0,
+  actualizado timestamptz default now()
+);
+
+create index if not exists puntos_por_reunion on puntos (reunion);
+create index if not exists items_por_pizarra  on pizarra_items (pizarra);
+create index if not exists pasos_por_padre    on pasos (padre);
+
 create index if not exists pasos_por_proyecto on pasos (proyecto);
 create index if not exists hitos_por_proyecto on hitos (proyecto);
 create index if not exists obs_por_codigo     on observaciones (codigo);
@@ -141,6 +205,9 @@ alter table agenda        enable row level security;
 alter table integrantes   enable row level security;
 alter table enlaces       enable row level security;
 alter table calendarios   enable row level security;
+alter table puntos        enable row level security;
+alter table pizarras      enable row level security;
+alter table pizarra_items enable row level security;
 
 -- La política se crea sólo si falta, para poder volver a ejecutar este archivo
 -- sin borrar nada.
@@ -148,7 +215,8 @@ do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
-                           'hitos','agenda','integrantes','enlaces','calendarios']
+                           'hitos','agenda','integrantes','enlaces','calendarios',
+                           'puntos','pizarras','pizarra_items']
   loop
     if not exists (
       select 1 from pg_policies
@@ -170,7 +238,8 @@ do $$
 declare t text;
 begin
   foreach t in array array['equipos','seguimiento','observaciones','proyectos','pasos',
-                           'hitos','agenda','integrantes','enlaces','calendarios']
+                           'hitos','agenda','integrantes','enlaces','calendarios',
+                           'puntos','pizarras','pizarra_items']
   loop
     if not exists (
       select 1 from pg_publication_tables

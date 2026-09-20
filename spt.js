@@ -553,25 +553,41 @@ function tarjetaProyecto(it) {
       selector(SPT.listas.plazo, pr.plazo_tipo, v => guarda('plazo_tipo', v))]),
     el('label', { class: 'field' }, [el('span', { text: 'Urgencia' }),
       selector(SPT.listas.urgencia, pr.urgencia, v => { guarda('urgencia', v); render(); })]),
+    el('label', { class: 'field' }, [el('span', { text: 'Empieza' }), (() => {
+      const f = el('input', { type: 'date', value: pr.inicio || '' });
+      f.addEventListener('change', () => guarda('inicio', f.value));
+      return f;
+    })()]),
     el('label', { class: 'field' }, [el('span', { text: 'Plazo final' }), (() => {
       const f = el('input', { type: 'date', value: pr.plazo_final || '' });
-      f.addEventListener('change', () => guarda('plazo_final', f.value));
+      f.addEventListener('change', () => { guarda('plazo_final', f.value); render(); });
       return f;
     })()])
   ]));
+
+  /* --- observaciones del proyecto --- */
+  card.appendChild(el('div', { class: 'bloque-t', text: 'Observaciones del proyecto' }));
+  const obsPr = el('textarea', { rows: 2,
+    placeholder: 'Contexto, acuerdos, con quién hay que hablar, qué está trabado…' });
+  obsPr.value = pr.observaciones || '';
+  obsPr.addEventListener('change', () => guarda('observaciones', obsPr.value));
+  card.appendChild(obsPr);
 
   /* --- equipo del proyecto: el primero es el principal --- */
   card.appendChild(el('div', { class: 'bloque-t', text: 'Equipo · el primero es el encargado principal' }));
   const cajaGente = el('div', { class: 'meta' });
   const pintarGente = () => {
     cajaGente.innerHTML = '';
-    if (!nombres().length) {
+    if (!personasElegibles().length) {
       cajaGente.appendChild(el('span', { style: 'font-size:12.5px;color:var(--ink-muted)',
         text: 'Agrega integrantes en la pestaña Equipo.' }));
       return;
     }
     (pr.designados || []).forEach((n, i) => {
-      cajaGente.appendChild(el('span', { class: 'tag ' + (i === 0 ? 'principal' : '') }, [
+      const quien = personaPorNombre(n);
+      cajaGente.appendChild(el('span', {
+        class: 'tag ' + (i === 0 ? 'principal' : '') + (quien && quien.externo ? ' externo' : ''),
+        title: quien && quien.externo ? 'De ' + (quien.equipo || 'otro equipo') : '' }, [
         document.createTextNode((i === 0 ? '★ ' : '') + n),
         i > 0 ? el('button', { class: 'x', type: 'button', text: '↑', title: 'Hacer principal',
           onclick: () => {
@@ -583,57 +599,32 @@ function tarjetaProyecto(it) {
           onclick: () => { guarda('designados', pr.designados.filter(x => x !== n)); pintarGente(); } })
       ].filter(Boolean)));
     });
-    nombres().filter(n => !(pr.designados || []).includes(n)).forEach(n =>
-      cajaGente.appendChild(el('button', { class: 'tag', type: 'button', text: '+ ' + n,
-        onclick: () => { guarda('designados', [...(pr.designados || []), n]); pintarGente(); } })));
+    personasElegibles().filter(n => !(pr.designados || []).includes(n)).forEach(n => {
+      const p = personaPorNombre(n);
+      cajaGente.appendChild(el('button', {
+        class: 'tag' + (p && p.externo ? ' externo' : ''), type: 'button',
+        title: p && p.externo ? 'De ' + (p.equipo || 'otro equipo') : 'De Participación',
+        text: '+ ' + n,
+        onclick: () => { guarda('designados', [...(pr.designados || []), n]); pintarGente(); } }));
+    });
   };
   pintarGente();
   card.appendChild(cajaGente);
 
   /* --- pasos --- */
   card.appendChild(el('div', { class: 'bloque-t', text: 'Pasos' }));
+  /* --- pasos, con sus sub-pasos ------------------------------------- *
+   * Cada paso puede abrirse para ver su detalle: fechas de inicio y
+   * plazo, quién lo lleva, sus observaciones y los sub-pasos en que se
+   * divide. Un paso con sub-pasos se marca solo cuando todos están.    */
   const cajaPasos = el('div', {});
   const pintarPasos = () => {
     cajaPasos.innerHTML = '';
     const pasos = Modelo.pasosDe(pr.id);
-    if (!pasos.length) cajaPasos.appendChild(el('div', { style: 'font-size:13px;color:var(--ink-muted)',
-      text: 'Sin pasos.' }));
-    pasos.forEach((paso, i) => {
-      const listo = paso.estado === 'Completado';
-      const chk = el('input', { type: 'checkbox', 'aria-label': 'Paso completado' });
-      chk.checked = listo;
-      chk.addEventListener('change', () => {
-        paso.estado = chk.checked ? 'Completado' : 'Pendiente';
-        Datos.guardar('pasos', paso);
-        pintarPasos(); refrescarCabeza();
-      });
-      const desc = el('input', { type: 'text', value: paso.descripcion });
-      desc.addEventListener('change', () => { paso.descripcion = desc.value; Datos.guardar('pasos', paso); });
-      const fecha = el('input', { type: 'date', class: 'oculta-movil', value: paso.plazo || '' });
-      fecha.addEventListener('change', () => { paso.plazo = fecha.value; Datos.guardar('pasos', paso); pintarPasos(); });
-      if (paso.plazo && !listo && paso.plazo < hoy()) fecha.classList.add('vencido');
-      const est = selector(SPT.listas.estadoPaso, paso.estado || 'Pendiente', v => {
-        paso.estado = v; Datos.guardar('pasos', paso); pintarPasos(); refrescarCabeza();
-      }, null);
-      est.classList.add('oculta-movil');
-      const enc = el('select', { multiple: 'multiple', size: 1, class: 'oculta-movil',
-        title: 'Encargados del paso', 'aria-label': 'Encargados' });
-      nombres().forEach(n => {
-        const o = el('option', { value: n, text: n });
-        if ((paso.encargados || []).includes(n)) o.selected = true;
-        enc.appendChild(o);
-      });
-      enc.addEventListener('change', () => {
-        paso.encargados = [...enc.selectedOptions].map(o => o.value).slice(0, 2);
-        Datos.guardar('pasos', paso);
-      });
-      cajaPasos.appendChild(el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
-        el('span', { class: 'n', text: String(i + 1) }), chk, desc, fecha, est, enc,
-        el('button', { class: 'x', type: 'button', text: '✕', title: 'Eliminar paso',
-          onclick: () => UI.borrarConDeshacer('pasos', { ...paso }, 'Paso',
-            () => { pintarPasos(); refrescarCabeza(); }) })
-      ]));
-    });
+    if (!pasos.length) cajaPasos.appendChild(el('div', { class: 'mini', text: 'Sin pasos.' }));
+    pasos.forEach((paso, i) => cajaPasos.appendChild(
+      filaPaso(paso, String(i + 1), pr, () => { pintarPasos(); refrescarCabeza(); })));
+
     const nuevo = el('input', { type: 'text', placeholder: 'Nuevo paso…', style: 'max-width:300px' });
     const agregar = () => {
       if (!nuevo.value.trim()) return;
@@ -917,6 +908,164 @@ function cajaAvisos(avisos) {
     el('b', { text: '⚠ ' + (avisos.length === 1 ? 'Un problema de horario' : `${avisos.length} problemas de horario`) }),
     el('ul', {}, avisos.map(a => el('li', { text: a })))
   ]);
+}
+
+/* Una fila de paso: arriba lo mínimo —marca, descripción, plazo, estado y
+   quién lo lleva— y, al abrirla, el detalle completo con sus sub-pasos.
+   La misma función sirve para los sub-pasos, que se dibujan corridos. */
+function filaPaso(paso, numero, pr, alCambiar, esSub) {
+  const hijos = Modelo.subDe(paso.id);
+  const listo = Modelo.pasoListo(paso);
+  const caja = el('div', { class: 'paso-caja' + (esSub ? ' sub' : '') });
+
+  const chk = el('input', { type: 'checkbox', 'aria-label': 'Paso completado' });
+  chk.checked = listo;
+  chk.disabled = hijos.length > 0;
+  chk.title = hijos.length ? 'Se marca solo cuando estén todos sus sub-pasos' : '';
+  chk.addEventListener('change', () => {
+    paso.estado = chk.checked ? 'Completado' : 'Pendiente';
+    Datos.guardar('pasos', paso);
+    alCambiar();
+  });
+
+  const desc = el('input', { type: 'text', value: paso.descripcion || '' });
+  desc.addEventListener('change', () => { paso.descripcion = desc.value; Datos.guardar('pasos', paso); });
+
+  const fecha = el('input', { type: 'date', class: 'oculta-movil', value: paso.plazo || '',
+    title: 'Plazo del paso' });
+  if (paso.plazo && !listo && paso.plazo < hoy()) fecha.classList.add('vencido');
+  fecha.addEventListener('change', () => { paso.plazo = fecha.value; Datos.guardar('pasos', paso); alCambiar(); });
+
+  const est = selector(SPT.listas.estadoPaso, paso.estado || 'Pendiente', v => {
+    paso.estado = v; Datos.guardar('pasos', paso); alCambiar();
+  }, null);
+  est.classList.add('oculta-movil');
+
+  /* Señales de que adentro hay más: sub-pasos y observaciones. */
+  const señas = el('span', { class: 'senas' });
+  if (hijos.length) señas.appendChild(el('i', { class: 'sena',
+    title: `${hijos.filter(h => h.estado === 'Completado').length} de ${hijos.length} sub-pasos`,
+    text: `${hijos.filter(h => h.estado === 'Completado').length}/${hijos.length}` }));
+  if (paso.observaciones) señas.appendChild(el('i', { class: 'sena obs',
+    title: 'Tiene observaciones', text: '✎' }));
+  if (paso.principal) señas.appendChild(el('i', { class: 'sena ppal',
+    title: 'A cargo: ' + paso.principal, text: '★ ' + paso.principal.split(' ')[0] }));
+
+  const detalle = el('div', { class: 'paso-detalle', hidden: true });
+  let abierto = false;
+  const abrir = el('button', { class: 'ico', type: 'button', text: '▸',
+    'aria-label': 'Ver el detalle del paso',
+    onclick: () => {
+      abierto = !abierto;
+      abrir.textContent = abierto ? '▾' : '▸';
+      detalle.hidden = !abierto;
+      if (abierto) pintarDetalle();
+    } });
+
+  const pintarDetalle = () => {
+    detalle.innerHTML = '';
+    const campo = (etiqueta, nodo) => el('label', { class: 'field' },
+      [el('span', { text: etiqueta }), nodo]);
+
+    const inicio = el('input', { type: 'date', value: paso.inicio || '' });
+    inicio.addEventListener('change', () => { paso.inicio = inicio.value; Datos.guardar('pasos', paso); });
+    const plazo = el('input', { type: 'date', value: paso.plazo || '' });
+    plazo.addEventListener('change', () => {
+      paso.plazo = plazo.value; Datos.guardar('pasos', paso); alCambiar();
+    });
+
+    /* Encargade principal del paso: puede no ser quien lleva el proyecto. */
+    const ppal = selector(personasElegibles(), paso.principal || '', v => {
+      paso.principal = v;
+      if (v && !(paso.encargados || []).includes(v)) {
+        paso.encargados = [v, ...(paso.encargados || [])].slice(0, 3);
+      }
+      Datos.guardar('pasos', paso); alCambiar();
+    }, 'Sin encargade principal');
+
+    detalle.appendChild(el('div', { class: 'campos' }, [
+      campo('Empieza', inicio), campo('Plazo', plazo),
+      campo('A cargo (principal)', ppal)
+    ]));
+
+    /* Acompañan: el resto del equipo, con externos incluidos. */
+    const acomp = el('div', { class: 'meta' });
+    const pintarAcomp = () => {
+      acomp.innerHTML = '';
+      const todos = personasElegibles();
+      if (!todos.length) {
+        acomp.appendChild(el('span', { class: 'mini',
+          text: 'Carga al equipo en la pestaña Equipo.' }));
+        return;
+      }
+      todos.forEach(n => {
+        const dentro = (paso.encargados || []).includes(n);
+        const p = personaPorNombre(n);
+        acomp.appendChild(el('button', {
+          class: 'tag' + (dentro ? ' principal' : '') + (p && p.externo ? ' externo' : ''),
+          type: 'button',
+          title: p && p.externo ? 'De ' + (p.equipo || 'otro equipo') : 'De Participación',
+          text: (dentro ? '✓ ' : '+ ') + n,
+          onclick: () => {
+            const ya = paso.encargados || [];
+            paso.encargados = dentro ? ya.filter(x => x !== n) : [...ya, n];
+            if (dentro && paso.principal === n) paso.principal = '';
+            Datos.guardar('pasos', paso); pintarAcomp(); alCambiar();
+          } }));
+      });
+    };
+    pintarAcomp();
+    detalle.appendChild(el('div', {}, [
+      el('span', { class: 'etiqueta', text: 'Quiénes lo hacen' }), acomp]));
+
+    const obs = el('textarea', { placeholder: 'Qué pasó, con quién se habló, qué quedó pendiente…',
+      rows: 2 });
+    obs.value = paso.observaciones || '';
+    obs.addEventListener('change', () => {
+      paso.observaciones = obs.value; Datos.guardar('pasos', paso); alCambiar();
+    });
+    detalle.appendChild(el('label', { class: 'field' },
+      [el('span', { text: 'Observaciones del paso' }), obs]));
+
+    /* Sub-pasos: el mismo componente, un nivel más adentro. */
+    if (!esSub) {
+      const lista = el('div', { class: 'subpasos' });
+      const repintar = () => { pintarDetalle(); alCambiar(); };
+      Modelo.subDe(paso.id).forEach((h, j) => lista.appendChild(
+        filaPaso(h, numero + '.' + (j + 1), pr, repintar, true)));
+      const nuevo = el('input', { type: 'text', placeholder: 'Dividir en un sub-paso…' });
+      const agregar = () => {
+        if (!nuevo.value.trim()) return;
+        Modelo.agregarPaso(pr.id, nuevo.value.trim(), { padre: paso.id });
+        nuevo.value = ''; repintar();
+      };
+      nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
+      detalle.appendChild(el('div', {}, [
+        el('span', { class: 'etiqueta', text: `Sub-pasos (${Modelo.subDe(paso.id).length})` }),
+        lista,
+        el('div', { style: 'display:flex; gap:8px; margin-top:6px' }, [
+          nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
+        ])
+      ]));
+    }
+  };
+
+  caja.appendChild(el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
+    el('span', { class: 'n', text: numero }), chk, desc, señas, fecha, est, abrir,
+    el('button', { class: 'x', type: 'button', text: '✕', title: 'Eliminar paso',
+      onclick: () => {
+        Modelo.subDe(paso.id).forEach(h => Datos.borrar('pasos', h.id));
+        UI.borrarConDeshacer('pasos', { ...paso }, 'Paso', alCambiar);
+      } })
+  ]));
+  caja.appendChild(detalle);
+  return caja;
+}
+
+/* Todo el que puede tomar un paso: la secretaría y la gente de fuera que se
+   haya cargado con su equipo. */
+function personasElegibles() {
+  return integrantes().map(i => i.nombre).filter(Boolean);
 }
 
 /* Lo que hay dentro de una carpeta de Drive, pedido al servidor cada vez
@@ -1655,7 +1804,8 @@ function descargar(nombre, contenido, tipo) {
 function vistaEquipo(raiz) {
   const card = el('div', { class: 'card compacta' }, [
     el('h2', { text: 'Integrantes' }),
-    el('div', { class: 'sub', text: 'Nombre, rol y correo: el correo es lo que usarán los recordatorios' })
+    el('div', { class: 'sub', text: 'La secretaría y la gente de otros equipos que toma trabajo con ' +
+      'nosotres. El correo es lo que usan los recordatorios.' })
   ]);
 
   const filas = integrantes().map(p => {
@@ -1664,8 +1814,20 @@ function vistaEquipo(raiz) {
       i.addEventListener('change', () => { p[nombre] = i.value; Datos.guardar('integrantes', p); });
       return i;
     };
-    return [campoTxt(p.nombre, 'nombre'), campoTxt(p.rol, 'rol', 'text', 'Rol en la secretaría'),
-      campoTxt(p.correo, 'correo', 'email', 'nombre@ug.uchile.cl'),
+    /* De dónde es: la propia secretaría, u otro equipo. Lo segundo marca a la
+       persona como externa y deja ver a quién se le está pidiendo algo. */
+    const donde = el('select', {});
+    donde.appendChild(el('option', { value: '', text: 'Participación' }));
+    SPT.equiposFECh.forEach(e => donde.appendChild(el('option', { value: e, text: e })));
+    donde.value = p.externo ? (p.equipo || SPT.equiposFECh[0]) : '';
+    donde.addEventListener('change', () => {
+      p.externo = Boolean(donde.value);
+      p.equipo = donde.value || '';
+      Datos.guardar('integrantes', p); render();
+    });
+
+    return [campoTxt(p.nombre, 'nombre'), campoTxt(p.rol, 'rol', 'text', 'Rol'),
+      donde, campoTxt(p.correo, 'correo', 'email', 'nombre@ug.uchile.cl'),
       el('button', { class: 'btn btn-sm' + (personaHorario === p.id ? ' btn-primary' : ''),
         type: 'button', text: resumenHorario(p), 'data-horario': p.id,
         title: 'Editar horarios disponibles',
@@ -1674,21 +1836,29 @@ function vistaEquipo(raiz) {
         onclick: () => UI.borrarConDeshacer('integrantes', { ...p }, 'Integrante', render) })];
   });
   card.appendChild(filas.length
-    ? tablaDensa(['Nombre', 'Rol', 'Correo', 'Horarios', ''], filas)
+    ? tablaDensa(['Nombre', 'Rol', 'Equipo', 'Correo', 'Horarios', ''], filas)
     : el('div', { class: 'empty', text: 'Todavía no hay integrantes.' }));
 
-  const nuevo = el('input', { type: 'text', placeholder: 'Nombre', style: 'max-width:220px' });
-  const correo = el('input', { type: 'email', placeholder: 'Correo', style: 'max-width:240px' });
+  const nuevo = el('input', { type: 'text', placeholder: 'Nombre', style: 'max-width:200px' });
+  const correo = el('input', { type: 'email', placeholder: 'Correo', style: 'max-width:220px' });
+  const equipo = el('select', { style: 'max-width:210px' });
+  equipo.appendChild(el('option', { value: '', text: 'De Participación' }));
+  SPT.equiposFECh.forEach(e => equipo.appendChild(el('option', { value: e, text: e })));
   const agregar = () => {
     if (!nuevo.value.trim()) return;
-    Datos.guardar('integrantes', { id: uid(), nombre: nuevo.value.trim(), rol: '', correo: correo.value.trim() });
-    nuevo.value = ''; correo.value = ''; render();
+    Datos.guardar('integrantes', { id: uid(), nombre: nuevo.value.trim(), rol: '',
+      correo: correo.value.trim(), externo: Boolean(equipo.value), equipo: equipo.value || '' });
+    nuevo.value = ''; correo.value = ''; equipo.value = ''; render();
   };
-  nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
-  correo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
+  [nuevo, correo].forEach(i =>
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } }));
   card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' }, [
-    nuevo, correo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
+    nuevo, correo, equipo,
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar', onclick: agregar })
   ]));
+  card.appendChild(el('div', { class: 'mini', style: 'margin-top:7px', text:
+    'Quien sea de otro equipo queda marcado como externe: se le puede designar pasos y ' +
+    'proyectos igual, y en las etiquetas se ve de dónde viene.' }));
   raiz.appendChild(card);
 
   if (personaHorario) raiz.appendChild(editorHorarios(personaHorario));
@@ -1855,6 +2025,9 @@ function render() {
   else if (vista === 'proyectos') vistaProyectos(raiz);
   else if (vista === 'calendario') vistaCalendario(raiz);
   else vistaEquipo(raiz);
+
+  UI.alAbrir = () => (window.REDIBUJAR || []).forEach(f => f());
+  if (vista !== 'calendario') UI.plegarTarjetas(raiz, 'spt-' + vista);
 }
 
 let oyentesGlobales = false;

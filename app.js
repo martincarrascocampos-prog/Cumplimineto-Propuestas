@@ -123,7 +123,7 @@ function vistaEtapa(paso) {
   Object.defineProperties(v, {
     t:  { get: () => paso.descripcion,
           set: x => { paso.descripcion = x; Datos.guardar('pasos', paso); } },
-    ok: { get: () => paso.estado === 'Completado',
+    ok: { get: () => Modelo.pasoListo(paso),
           set: x => { paso.estado = x ? 'Completado' : 'Pendiente'; Datos.guardar('pasos', paso); } },
     f:  { get: () => paso.plazo || '',
           set: x => { paso.plazo = x; Datos.guardar('pasos', paso); } }
@@ -664,12 +664,8 @@ function abrirPropuesta(p) {
     /* La otra mitad de la bisagra: estas etapas y los pasos del SPT son la
        misma fila en la base. Conviene decirlo donde se editan. */
     p.eq === 'PART'
-      ? el('div', { class: 'enlace-spt part', style: 'margin:0 0 10px' }, [
-          el('b', { text: 'Estas etapas son los pasos del SPT.' }),
-          document.createTextNode(' Lo que se agregue o se marque acá aparece en el proyecto ' +
-            'del SPT de Participación, y lo que el equipo marque allá sube el avance acá. ' +
-            'Es una sola lista, vista desde los dos lados.')
-        ])
+      ? el('div', { class: 'enlace-spt part', style: 'margin:0 0 10px',
+          text: 'Son los mismos pasos del SPT: se editan desde los dos lados.' })
       : null,
     listaEtapas
   ]);
@@ -739,7 +735,26 @@ function abrirPropuesta(p) {
 /* ------------------------------------------------------------------ *
  * 7. Vista: Panel
  * ------------------------------------------------------------------ */
+/* Qué es esto, en cuatro frases. Vive plegado arriba del Panel. */
+function explicador() {
+  const punto = (t, d) => el('div', { class: 'expl' }, [
+    el('b', { text: t }), el('span', { text: d })]);
+  return el('div', { class: 'expl-caja' }, [
+    punto('Qué mide', 'El promedio de avance de las 102 propuestas del programa ' +
+      'Conectemos la Chile, repartidas entre los siete equipos de la Mesa.'),
+    punto('Las cuatro marcas', '50% a medio camino · 70% mínimo · 80% ideal · 90% logro. ' +
+      'Valen igual para cada equipo y cada eje.'),
+    punto('La línea punteada', 'La proyección al cierre: cuánto se cumpliría si cada ' +
+      'propuesta sigue como va.'),
+    punto('Etapas', 'Si una propuesta se divide en etapas, el avance lo calculan ellas. ' +
+      'Las de Participación son los pasos de su SPT.')
+  ]);
+}
+
 function vistaPanel(raiz) {
+  raiz.appendChild(UI.seccion('que-es', '¿Conectómetro?',
+    'Qué mide y cómo se lee', [explicador()], { abierta: false }));
+
   const lista = filtradas();
   const r = resumen(lista);
   const nivel = nivelDe(r.cumplimiento);
@@ -778,38 +793,22 @@ function vistaPanel(raiz) {
    ['En progreso', r.enProgreso], ['En riesgo', r.enRiesgo], ['No iniciadas', r.noIniciadas]]
     .forEach(([txt, v]) => kpis.appendChild(el('div', { class: 'kpi' }, [
       el('b', { text: String(v) }), el('span', { text: txt })])));
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Estado general' }),
-    el('div', { class: 'sub', text: 'Sobre las propuestas que pasan el filtro activo' }), kpis
-  ]));
+  raiz.appendChild(UI.seccion('estado-general', 'Estado general',
+    'Sobre las propuestas que pasan el filtro activo', [kpis]));
 
   /* El reparto del trabajo: nada viene asignado de fábrica, así que lo
      primero que hay que hacer con el sistema es repartir las 102. */
   const sinEquipo = lista.filter(p => !p.eq).length;
   const enPart = lista.filter(p => p.eq === 'PART').length;
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Reparto por equipo' }),
-    el('div', { class: 'sub', text: sinEquipo
-      ? `${sinEquipo} de ${lista.length} propuestas todavía no tienen equipo responsable.`
-      : 'Todas las propuestas tienen equipo responsable.' }),
-    sinEquipo === lista.length
-      ? el('div', { class: 'enlace-spt sin' }, [
-          el('b', { text: 'El programa parte sin repartir.' }),
-          el('p', { text: 'Ninguna propuesta viene asignada: el reparto lo decide la Mesa. ' +
-            'Ve a Propuestas, abre cada una y elige el equipo responsable. Las que queden en ' +
-            'la Secretaría de Participación aparecen automáticamente como proyectos en el SPT, ' +
-            'y los pasos que se registren allá suben el cumplimiento acá.' }),
+  raiz.appendChild(UI.seccion('reparto', 'Reparto por equipo',
+    sinEquipo
+      ? `${sinEquipo} de ${lista.length} sin equipo responsable`
+      : `${enPart} en Participación`, [
+    sinEquipo
+      ? el('div', { class: 'toolbar' },
           el('button', { class: 'btn btn-sm btn-primary', type: 'button',
-            text: 'Ir a repartir las propuestas →',
-            onclick: () => irAVista('propuestas') })
-        ])
-      : el('div', { class: 'enlace-spt part' }, [
-          el('b', { text: `${enPart} en la Secretaría de Participación.` }),
-          document.createTextNode(enPart
-            ? ' Esas son las que el SPT de Participación muestra como proyectos del programa; ' +
-              'sus pasos son las etapas que se ven acá.'
-            : ' Cuando una propuesta quede en Participación, aparecerá sola en su SPT.')
-        ])
+            text: 'Repartir propuestas →', onclick: () => irAVista('propuestas') }))
+      : null
   ]));
 
   const cardEstados = el('div', { class: 'card' }, [
@@ -877,34 +876,6 @@ function vistaPanel(raiz) {
   }
   raiz.appendChild(card);
 
-  /* Qué es esto */
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Qué es el Conectómetro' }),
-    el('div', { class: 'sub', text: 'Cómo funciona esta aplicación' }),
-    el('div', { class: 'note' }, [
-      el('p', { text:
-        'El Conectómetro toma las 102 propuestas del programa "Conectemos la Chile" (FECh 2026), las reparte ' +
-        'entre los equipos de la Mesa y mide cuánto de lo comprometido se está cumpliendo. Nadie tiene que ' +
-        'acordarse de todo: el programa queda escrito, repartido y medido en un solo lugar.' }),
-      el('p', { text:
-        'Cada propuesta tiene un equipo responsable, un estado y un avance. Se puede dividir en etapas ' +
-        '(y entonces el avance lo calculan las etapas completadas) y se le pueden ir agregando observaciones ' +
-        'con fecha, para dejar registro de gestiones, reuniones y trabas.' }),
-      el('p', { text:
-        'El número grande es el promedio de avance de las propuestas vigentes. La línea punteada es la ' +
-        'proyección al cierre: cuánto llegaría a cumplirse si cada propuesta avanza según su estado actual.' }),
-      el('p', { text:
-        'Las cuatro marcas del medidor son las metas: 50% a medio camino, 70% mínimo, 80% ideal y 90% logro. ' +
-        'Los mismos umbrales aplican a cada equipo y a cada eje, para ver quién va quedando atrás.' }),
-      el('p', { text:
-        'En Proyecto se ve todo como un plan de trabajo: cada equipo con sus propuestas y cada propuesta ' +
-        'con sus etapas, para marcar avance etapa por etapa y ponerles plazo. Hay una estructura tipo de ' +
-        'cinco etapas que se puede aplicar de una vez a muchas propuestas.' }),
-      el('p', { text:
-        'En Programa está el documento completo: en Lectura, el texto tal cual fue escrito; en PDF original, ' +
-        'las 57 páginas como se imprimen, para verlas y descargar el archivo.' })
-    ])
-  ]));
 }
 
 /* ------------------------------------------------------------------ *
@@ -1264,30 +1235,16 @@ function listadoEtapas(raiz, lista, editable) {
    asignar acá crea el proyecto allá, y los pasos de allá son estas etapas. */
 function notaEnlaceSPT(p) {
   const eq = equipoDe(p.eq);
-  if (!eq) {
-    return el('div', { class: 'enlace-spt sin' }, [
-      el('b', { text: 'Sin asignar.' }),
-      document.createTextNode(' Mientras no tenga equipo, esta propuesta no aparece en ' +
-        'ningún sistema de planificación. Elige el equipo responsable arriba.')
-    ]);
-  }
+  if (!eq) return el('div', { class: 'enlace-spt sin', text: 'Sin equipo: no entra a ningún SPT.' });
   if (eq.id === 'PART') {
     return el('div', { class: 'enlace-spt part' }, [
-      el('b', { text: 'Asignada a ' + eq.nombre + '.' }),
-      document.createTextNode(' Ya aparece como proyecto en el SPT de Participación, en el ' +
-        'grupo "Del programa". Los pasos que le pongan allá son estas mismas etapas: ' +
-        'marcar un paso allá sube el avance acá.'),
-      el('a', { class: 'btn btn-sm', style: 'margin-top:8px',
-        href: window.UNARCHIVO ? '#' : 'spt.html',
+      document.createTextNode('Es proyecto en el SPT de Participación. '),
+      el('a', { href: window.UNARCHIVO ? '#' : 'spt.html',
         onclick: window.UNARCHIVO ? (e => { e.preventDefault(); window.irASeccion('spt'); }) : null,
-        text: 'Ver en el SPT →' })
+        text: 'Verlo allá →' })
     ]);
   }
-  return el('div', { class: 'enlace-spt otro' }, [
-    el('b', { text: 'Asignada a ' + eq.nombre + '.' }),
-    document.createTextNode(' El seguimiento lo lleva ese equipo. El SPT que existe hoy es ' +
-      'sólo el de Participación; los demás equipos registran su avance acá, en esta ficha.')
-  ]);
+  return el('div', { class: 'enlace-spt otro', text: 'Seguimiento a cargo de ' + eq.nombre + '.' });
 }
 
 /* ------------------------------------------------------------------ *
@@ -1611,6 +1568,9 @@ function render() {
   else if (vista === 'proyecto') vistaProyecto(raiz);
   else if (vista === 'programa') vistaPrograma(raiz);
   else vistaPanel(raiz);
+
+  UI.alAbrir = () => redibujables.forEach(f => f());
+  if (vista !== 'programa') UI.plegarTarjetas(raiz, vista);
 }
 
 async function iniciar() {
