@@ -148,21 +148,46 @@ Cada vez que yo suba algo, esta es la rutina. Toma un minuto.
 
 ### 1. Traer los cambios
 
-En Replit, panel izquierdo → icono de **Git** → **Pull**.
+Hay dos caminos. **El de la Shell funciona siempre**, así que empieza por ese: Replit mueve
+de lugar el panel de Git cada cierto tiempo, pero la Shell está desde siempre.
 
-Para confirmar que entró, mira el último commit que muestra ese panel: debe ser el que te
-anuncié en el chat.
+#### Camino A · la Shell (el seguro)
 
-**Si el Pull se niega o no hace nada**, casi siempre es porque hay cambios locales sin guardar.
-Abre la pestaña **Shell** (también en el panel izquierdo) y escribe:
+En el panel izquierdo busca **Shell** (si no está a la vista: `Ctrl + K` en Windows o
+`Cmd + K` en Mac, escribe `Shell` y entra). Ahí escribe:
 
 ```bash
-git status          # muestra si hay cambios tuyos sin guardar
-git stash           # los guarda aparte para que no estorben
+git pull
+```
+
+Eso es todo. Si responde algo como `Updating 99e897a..25396fe` y una lista de archivos,
+entró. Si dice `Already up to date`, ya lo tenías.
+
+**Si se niega** porque hay cambios locales (Replit a veces guarda solo su archivo de
+configuración), encadena estos tres:
+
+```bash
+git status          # muestra qué quedó suelto
+git stash           # lo guarda aparte, sin borrarlo
 git pull            # ahora sí trae lo nuevo
 ```
 
-Si `git status` sale limpio y aun así no traía nada, con `git pull` en el Shell basta.
+Para confirmar qué versión quedó:
+
+```bash
+git log --oneline -1
+```
+
+Te devuelve el título del último commit: tiene que ser el que te anuncié en el chat.
+
+#### Camino B · el panel de Git
+
+Si prefieres botones, el panel de Git en las versiones nuevas de Replit **no está suelto en
+la barra lateral**: se abre desde **Tools** (o **Herramientas**) en el panel izquierdo, y ahí
+eliges **Git**. El atajo directo es `Ctrl + K` / `Cmd + K` → escribir `Git`.
+
+Una vez abierto, el botón dice **Pull** (a veces aparece como una flecha hacia abajo, o como
+`Pull from GitHub`). Si el panel muestra "commits behind", ese número es lo que falta por traer.
 
 ### 2. Reiniciar
 
@@ -171,9 +196,14 @@ Botón **Run** arriba. Si ya estaba corriendo, detén y vuelve a darle.
 ### 3. Publicar (este es el que se olvida)
 
 **Run solo actualiza tu ventana de prueba.** La dirección que usa el equipo —la que termina en
-`.replit.app`— se queda en la versión anterior hasta que aprietas **Deploy** otra vez.
+`.replit.app`— se queda en la versión anterior hasta que publicas de nuevo.
 
-Regla simple: **Pull → Run → Deploy**. Si te saltas el tercero, tú ves lo nuevo y el resto no.
+Esto **no está en el panel de Git**, es otro lugar: el botón **Deploy** arriba a la derecha.
+Al abrirlo verás tu despliegue ya creado y un botón que dice **Redeploy** (o **Deploy** otra
+vez). Ese es el que hay que apretar. Tarda un par de minutos y al terminar la dirección
+pública ya muestra lo nuevo.
+
+Regla simple: **Pull → Run → Redeploy**. Si te saltas el tercero, tú ves lo nuevo y el resto no.
 
 ### 4. Recargar el navegador
 
@@ -189,8 +219,16 @@ volver a correr sin romper nada). Eso va **antes** del Pull.
 ### Comprobación rápida
 
 Si dudas de qué versión estás viendo, revisa que estén las novedades anunciadas. Hoy, por ejemplo:
-el Conectómetro no debe tener pestaña *Datos*, el SPT debe tener pestaña *Panel*, y en *Equipo*
-debe haber una columna *Horarios*.
+las pestañas deben tener **íconos** arriba del nombre, el Conectómetro debe tener pestaña
+**Documentos** (con el Programa y los Estatutos FECh), el calendario del SPT debe tener los
+botones **Mes / Semana / Día / Agenda**, y en el Panel del Conectómetro debe aparecer
+**"Reparto por equipo"** diciendo que las 102 propuestas están sin asignar.
+
+Desde la Shell también se puede comprobar sin abrir nada:
+
+```bash
+git log --oneline -3
+```
 
 ---
 
