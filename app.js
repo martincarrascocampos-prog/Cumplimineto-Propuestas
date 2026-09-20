@@ -751,7 +751,14 @@ function explicador() {
   ]);
 }
 
+const DEFINICION =
+  'El Conectómetro es el espacio de trabajo central e interactivo de la Secretaría de ' +
+  'Participación. Funciona como el cerebro logístico y visual de la plataforma, midiendo y ' +
+  'vinculando en tiempo real el flujo de trabajo: desde el nacimiento de ideas y revisión de ' +
+  'documentos, hasta la calendarización de reuniones y ejecución de proyectos.';
+
 function vistaPanel(raiz) {
+  raiz.appendChild(el('p', { class: 'definicion', text: DEFINICION }));
   raiz.appendChild(UI.seccion('que-es', '¿Conectómetro?',
     'Qué mide y cómo se lee', [explicador()], { abierta: false }));
 

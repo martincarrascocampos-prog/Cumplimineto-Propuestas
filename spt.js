@@ -167,7 +167,14 @@ function cumplimientoDe(lista) {
   return Math.round(lista.reduce((a, it) => a + avanceDe(it), 0) / lista.length);
 }
 
+const DEFINICION =
+  'El Conectómetro es el espacio de trabajo central e interactivo de la Secretaría de ' +
+  'Participación. Funciona como el cerebro logístico y visual de la plataforma, midiendo y ' +
+  'vinculando en tiempo real el flujo de trabajo: desde el nacimiento de ideas y revisión de ' +
+  'documentos, hasta la calendarización de reuniones y ejecución de proyectos.';
+
 function vistaTablero(raiz) {
+  raiz.appendChild(el('p', { class: 'definicion', text: DEFINICION }));
   const todos = items();
   const activos = todos.filter(it => campo(it, 'estado', 'Activo') === 'Activo');
   const lista = filtrados();
@@ -1799,6 +1806,556 @@ function descargar(nombre, contenido, tipo) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 9. Pizarra
+ *
+ * Un lienzo compartido por reunión. Cada cosa que se pone encima es una
+ * fila de pizarra_items, así dos personas pueden mover cosas distintas a
+ * la vez sin pisarse, y el tiempo real de la base hace el resto.
+ *
+ * Sin librerías: SVG para las líneas y el trazo, y divs sueltos para los
+ * nodos. Es lo mismo con que están hechos los gráficos del sistema, y
+ * permite que el archivo de un solo clic siga funcionando sin internet.
+ *
+ * Tipos de elemento:
+ *   nota      · un papel de color con texto
+ *   texto     · una idea suelta, sin fondo
+ *   tabla     · una rejilla editable que se genera y crece
+ *   dibujo    · un trazo a mano alzada (puntos en datos.trazo)
+ *   proyecto  · una ventana con el proyecto vivo, reducible
+ *   conexion  · una línea entre dos elementos (el mapa mental)
+ * ------------------------------------------------------------------ */
+
+const COLORES_PIZARRA = ['#f7d774', '#f3a9a2', '#a8d8c8', '#a9c4ea',
+                         '#d9b8e4', '#f2c69a', '#c9d79a', '#e3e0d4'];
+const colorItem = n => COLORES_PIZARRA[((n || 1) - 1) % COLORES_PIZARRA.length];
+
+/* Colores del mapa mental, uno por clase de nodo, para que se lea de lejos. */
+const COLOR_NODO = { raiz: 1, plazo: 6, paso: 3, persona: 4, obs: 5 };
+
+let pizarraActual = null;
+let herramienta = 'mano';        /* mano · dibujo · conexion */
+let conexionDesde = null;
+let arrastrando = false;
+
+const pizarras = () => Datos.todo('pizarras').slice()
+  .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+const itemsDe = id => Datos.todo('pizarra_items').filter(i => i.pizarra === id);
+
+function asegurarPizarra() {
+  if (pizarras().length) return pizarraActual && Datos.uno('pizarras', pizarraActual)
+    ? Datos.uno('pizarras', pizarraActual) : pizarras()[0];
+  return Datos.guardar('pizarras', { id: uid(), nombre: 'Pizarra de trabajo', orden: 0 });
+}
+
+function nuevoItem(tipo, extra) {
+  /* Lo nuevo cae en escalera, no encima de lo anterior: si todo aterriza en
+     el mismo punto la pizarra queda con una pila y no se ve nada. */
+  const n = itemsDe(pizarraActual).filter(i => i.tipo !== 'conexion').length;
+  return Datos.guardar('pizarra_items', Object.assign({
+    id: uid(), pizarra: pizarraActual, tipo,
+    x: 40 + (n % 6) * 42, y: 40 + (n % 6) * 34 + Math.floor(n / 6) * 30,
+    ancho: 210, alto: 130, texto: '', color: 1,
+    datos: {}, orden: n
+  }, extra || {}));
+}
+
+/* ------------------------- la vista ------------------------------- */
+function vistaPizarra(raiz) {
+  const pz = asegurarPizarra();
+  pizarraActual = pz.id;
+  const items = itemsDe(pz.id);
+
+  raiz.appendChild(barraPizarra(pz, items));
+
+  const lienzo = el('div', { class: 'pz-lienzo' + (herramienta !== 'mano' ? ' modo-' + herramienta : '') });
+  const capa = el('div', { class: 'pz-capa' });
+  const svg = document.createElementNS(Graficos.ns, 'svg');
+  svg.setAttribute('class', 'pz-lineas');
+  capa.appendChild(svg);
+
+  /* Primero los nodos, para poder medirlos y después tirar las líneas. */
+  const cajas = new Map();
+  items.filter(i => i.tipo !== 'conexion').forEach(it => {
+    const nodo = nodoItem(it);
+    cajas.set(it.id, it);
+    capa.appendChild(nodo);
+  });
+  items.filter(i => i.tipo === 'conexion').forEach(it => dibujarConexion(svg, it, cajas));
+
+  lienzo.appendChild(capa);
+  conectarLienzo(lienzo, capa, svg);
+  raiz.appendChild(lienzo);
+
+  if (!items.length) raiz.appendChild(el('p', { class: 'pz-vacia', text:
+    'Pizarra en blanco. Agrega una nota, trae los puntos de una reunión o ' +
+    'suelta un proyecto para que se arme su mapa mental.' }));
+}
+
+/* ------------------------- barra de arriba ------------------------ */
+function barraPizarra(pz, items) {
+  const caja = el('div', { class: 'pz-barra' });
+
+  /* Qué pizarra: se crean en blanco y se guardan solas. */
+  const sel = el('select', { class: 'pz-sel', title: 'Pizarra abierta' });
+  pizarras().forEach(p => sel.appendChild(el('option', { value: p.id, text: p.nombre })));
+  sel.value = pz.id;
+  sel.addEventListener('change', () => { pizarraActual = sel.value; render(); });
+
+  const nombre = el('input', { type: 'text', value: pz.nombre, class: 'pz-nombre',
+    title: 'Nombre de la pizarra' });
+  nombre.addEventListener('change', () => {
+    pz.nombre = nombre.value; Datos.guardar('pizarras', pz); render();
+  });
+
+  const herr = (id, txt, titulo) => el('button', {
+    class: 'btn btn-sm' + (herramienta === id ? ' btn-primary' : ''), type: 'button',
+    text: txt, title: titulo,
+    onclick: () => { herramienta = herramienta === id ? 'mano' : id; conexionDesde = null; render(); } });
+
+  caja.appendChild(el('div', { class: 'pz-grupo' }, [
+    sel, nombre,
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ Pizarra en blanco',
+      onclick: () => {
+        const n = Datos.guardar('pizarras', { id: uid(),
+          nombre: 'Pizarra ' + (pizarras().length + 1), orden: pizarras().length });
+        pizarraActual = n.id; render();
+      } }),
+    pizarras().length > 1 ? el('button', { class: 'x', type: 'button', text: '✕',
+      title: 'Eliminar esta pizarra',
+      onclick: () => {
+        if (!confirm(`¿Eliminar "${pz.nombre}" y todo lo que tiene encima?`)) return;
+        itemsDe(pz.id).forEach(i => Datos.borrar('pizarra_items', i.id));
+        Datos.borrar('pizarras', pz.id);
+        pizarraActual = null; render();
+      } }) : null
+  ].filter(Boolean)));
+
+  caja.appendChild(el('div', { class: 'pz-grupo' }, [
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ Nota',
+      onclick: () => { nuevoItem('nota', { texto: '', color: 1 + itemsDe(pizarraActual).length % 8 }); render(); } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ Idea',
+      onclick: () => { nuevoItem('texto', { ancho: 200, alto: 44 }); render(); } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ Tabla',
+      onclick: () => {
+        nuevoItem('tabla', { ancho: 360, alto: 170,
+          datos: { filas: [['Tema', 'Quién', 'Acuerdo'], ['', '', '']] } });
+        render();
+      } }),
+    herr('dibujo', '✎ Dibujar', 'Trazar a mano alzada'),
+    herr('conexion', '⤳ Conectar', 'Unir dos elementos para armar el mapa mental')
+  ]));
+
+  caja.appendChild(el('div', { class: 'pz-grupo' }, [
+    selectorReunion(), selectorProyecto(),
+    el('span', { class: 'mini', text: `${items.length} elementos` })
+  ]));
+
+  if (herramienta === 'conexion') caja.appendChild(el('div', { class: 'pz-pista',
+    text: conexionDesde ? 'Ahora toca el segundo elemento.' : 'Toca el primer elemento a unir.' }));
+  if (herramienta === 'dibujo') caja.appendChild(el('div', { class: 'pz-pista',
+    text: 'Arrastra sobre la pizarra para trazar. Vuelve a tocar Dibujar para salir.' }));
+  return caja;
+}
+
+/* Traer a la pizarra los puntos de una reunión, como líneas de ideas. */
+function selectorReunion() {
+  const sel = el('select', { class: 'pz-sel', title: 'Traer los puntos de una reunión' });
+  sel.appendChild(el('option', { value: '', text: 'Traer puntos de…' }));
+  Datos.todo('agenda').slice()
+    .sort((a, b) => String(b.inicio).localeCompare(String(a.inicio)))
+    .forEach(ev => sel.appendChild(el('option', { value: ev.id,
+      text: (fechaCorta(ev.inicio) || 'sin fecha') + ' · ' + recorta(ev.tema || 'Reunión', 28) })));
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    traerPuntos(sel.value);
+    sel.value = '';
+  });
+  return sel;
+}
+
+function traerPuntos(reunionId) {
+  const ev = Datos.uno('agenda', reunionId);
+  const puntos = Datos.todo('puntos').filter(p => p.reunion === reunionId)
+    .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  if (!puntos.length) {
+    UI.aviso('Esa reunión todavía no tiene puntos en su tabla.');
+    return;
+  }
+  /* La reunión queda como raíz y los puntos colgando: una línea de ideas. */
+  const raizItem = nuevoItem('nota', {
+    texto: ev.tema || 'Reunión', x: 60, y: 60, ancho: 230, alto: 90, color: 2
+  });
+  puntos.forEach((p, i) => {
+    const nodo = nuevoItem('texto', {
+      texto: p.texto + (p.responsable ? `\n— ${p.responsable}` : ''),
+      x: 360, y: 60 + i * 76, ancho: 250, alto: 62, color: 8
+    });
+    nuevoItem('conexion', { datos: { de: raizItem.id, a: nodo.id } });
+  });
+  /* La pizarra queda asociada a esa reunión, para volver a abrirla después. */
+  const pz = Datos.uno('pizarras', pizarraActual);
+  if (pz) { pz.reunion = reunionId; Datos.guardar('pizarras', pz); }
+  UI.aviso(`${puntos.length} puntos traídos a la pizarra`);
+  render();
+}
+
+/* Soltar un proyecto: se arma su mapa mental completo. */
+function selectorProyecto() {
+  const sel = el('select', { class: 'pz-sel', title: 'Armar el mapa mental de un proyecto' });
+  sel.appendChild(el('option', { value: '', text: 'Mapa mental de…' }));
+  items().forEach(it => sel.appendChild(el('option', { value: it.clave,
+    text: recorta(it.nombre, 34) })));
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const it = items().find(x => x.clave === sel.value);
+    if (it) mapaMental(it);
+    sel.value = '';
+  });
+  return sel;
+}
+
+/* El mapa mental de un proyecto: título al centro, y alrededor los plazos,
+   los pasos con sus sub-pasos, los responsables y las observaciones. Cada
+   clase de nodo con su color. */
+function mapaMental(it) {
+  const pr = asegurar(it);
+  const pasos = Modelo.pasosDe(pr.id);
+  const gente = pr.designados || [];
+
+  /* El mapa se arma en un claro: debajo de lo que ya hay, y con margen a la
+     izquierda para que los nodos de plazos no queden fuera del lienzo. */
+  const previos = itemsDe(pizarraActual).filter(i => i.tipo !== 'conexion');
+  const cx = 600;
+  const cy = previos.length
+    ? Math.max(...previos.map(i => (i.y || 0) + (i.alto || 120))) + 260
+    : 300;
+  const raizItem = nuevoItem('proyecto', {
+    texto: pr.nombre, x: cx - 130, y: cy - 60, ancho: 260, alto: 120,
+    color: COLOR_NODO.raiz, datos: { proyecto: pr.id, reducida: false }
+  });
+
+  const unir = (a, b) => nuevoItem('conexion', { datos: { de: a, a: b } });
+
+  /* Plazos a la izquierda */
+  const plazos = [];
+  if (pr.inicio) plazos.push('Empieza: ' + fechaCorta(pr.inicio));
+  if (pr.plazo_final) plazos.push('Plazo final: ' + fechaCorta(pr.plazo_final));
+  if (pr.urgencia) plazos.push('Urgencia: ' + pr.urgencia);
+  plazos.forEach((t, i) => {
+    const n = nuevoItem('texto', { texto: t, x: cx - 460, y: cy - 90 + i * 70,
+      ancho: 210, alto: 56, color: COLOR_NODO.plazo });
+    unir(raizItem.id, n.id);
+  });
+
+  /* Responsables abajo */
+  gente.forEach((n, i) => {
+    const p = personaPorNombre(n);
+    const nodo = nuevoItem('texto', {
+      texto: (i === 0 ? '★ ' : '') + n + (p && p.externo ? `\n(${p.equipo})` : ''),
+      x: cx - 240 + i * 190, y: cy + 150, ancho: 170, alto: 56, color: COLOR_NODO.persona });
+    unir(raizItem.id, nodo.id);
+  });
+
+  /* Pasos a la derecha, con sus sub-pasos colgando */
+  pasos.forEach((paso, i) => {
+    const y = cy - 180 + i * 130;
+    const marca = Modelo.pasoListo(paso) ? '✓ ' : '';
+    const nodo = nuevoItem('texto', {
+      texto: `${marca}${i + 1}. ${paso.descripcion || 'Paso'}` +
+             (paso.plazo ? `\n${fechaCorta(paso.plazo)}` : '') +
+             (paso.principal ? `\n★ ${paso.principal}` : ''),
+      x: cx + 230, y, ancho: 230, alto: 76, color: COLOR_NODO.paso });
+    unir(raizItem.id, nodo.id);
+
+    Modelo.subDe(paso.id).forEach((h, j) => {
+      const sub = nuevoItem('texto', {
+        texto: (h.estado === 'Completado' ? '✓ ' : '') + h.descripcion,
+        x: cx + 500, y: y + j * 58, ancho: 210, alto: 48, color: COLOR_NODO.paso });
+      unir(nodo.id, sub.id);
+    });
+  });
+
+  /* Observaciones arriba */
+  if (pr.observaciones) {
+    const n = nuevoItem('nota', { texto: pr.observaciones, x: cx - 110, y: cy - 260,
+      ancho: 240, alto: 110, color: COLOR_NODO.obs });
+    unir(raizItem.id, n.id);
+  }
+
+  UI.aviso('Mapa mental armado con ' + pasos.length + ' pasos');
+  render();
+}
+
+/* ------------------------- cada elemento -------------------------- */
+function nodoItem(it) {
+  const caja = el('div', {
+    class: 'pz-item tipo-' + it.tipo + (it.datos && it.datos.reducida ? ' reducida' : ''),
+    style: `left:${it.x}px; top:${it.y}px; width:${it.ancho}px;` +
+           (it.tipo === 'dibujo' ? '' : ` min-height:${it.alto}px;`) +
+           ` --c:${colorItem(it.color)}`,
+    'data-item': it.id
+  });
+
+  /* Asa: se arrastra de acá, y desde acá se conecta con otro. */
+  const asa = el('div', { class: 'pz-asa' }, [
+    el('span', { class: 'pz-punto' }),
+    el('button', { class: 'pz-x', type: 'button', text: '✕', title: 'Quitar de la pizarra',
+      onclick: e => {
+        e.stopPropagation();
+        /* Las líneas que llegaban a este elemento se van con él. */
+        Datos.todo('pizarra_items')
+          .filter(x => x.tipo === 'conexion' && x.datos &&
+                       (x.datos.de === it.id || x.datos.a === it.id))
+          .forEach(x => Datos.borrar('pizarra_items', x.id));
+        UI.borrarConDeshacer('pizarra_items', { ...it }, 'Elemento', render);
+      } })
+  ]);
+  if (it.tipo !== 'dibujo') caja.appendChild(asa);
+
+  if (it.tipo === 'nota' || it.tipo === 'texto') caja.appendChild(cuerpoTexto(it));
+  else if (it.tipo === 'tabla') caja.appendChild(cuerpoTabla(it));
+  else if (it.tipo === 'proyecto') caja.appendChild(cuerpoProyecto(it, caja));
+  else if (it.tipo === 'dibujo') caja.appendChild(cuerpoDibujo(it));
+
+  if (it.tipo !== 'dibujo') arrastrable(caja, it);
+  return caja;
+}
+
+function cuerpoTexto(it) {
+  const t = el('textarea', { class: 'pz-texto', placeholder: 'Escribe…' });
+  t.value = it.texto || '';
+  t.addEventListener('change', () => { it.texto = t.value; Datos.guardar('pizarra_items', it); });
+  /* Crece con lo que se escribe, sin tener que arrastrar el borde. */
+  const ajustar = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+  t.addEventListener('input', ajustar);
+  requestAnimationFrame(ajustar);
+  return t;
+}
+
+/* Una tabla que se genera y crece: filas y columnas se agregan con un botón. */
+function cuerpoTabla(it) {
+  const datos = it.datos && it.datos.filas ? it.datos : { filas: [['', '']] };
+  const caja = el('div', { class: 'pz-tabla' });
+  const guardar = () => { it.datos = datos; Datos.guardar('pizarra_items', it); };
+
+  const tabla = el('table');
+  datos.filas.forEach((fila, f) => {
+    const tr = el('tr', {});
+    fila.forEach((celda, c) => {
+      const inp = el('input', { type: 'text', value: celda,
+        placeholder: f === 0 ? 'Columna' : '' });
+      if (f === 0) inp.classList.add('cabecera');
+      inp.addEventListener('change', () => { datos.filas[f][c] = inp.value; guardar(); });
+      tr.appendChild(el('td', {}, inp));
+    });
+    tabla.appendChild(tr);
+  });
+  caja.appendChild(tabla);
+  caja.appendChild(el('div', { class: 'pz-tabla-pie' }, [
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ fila',
+      onclick: () => { datos.filas.push(datos.filas[0].map(() => '')); guardar(); render(); } }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: '+ columna',
+      onclick: () => { datos.filas.forEach(f => f.push('')); guardar(); render(); } })
+  ]));
+  return caja;
+}
+
+/* La ventana de un proyecto: vive del proyecto real, no de una copia, y se
+   reduce a su título para que no ocupe media pizarra. */
+function cuerpoProyecto(it, caja) {
+  const pr = Datos.uno('proyectos', it.datos && it.datos.proyecto);
+  const cuerpo = el('div', { class: 'pz-proy' });
+  if (!pr) {
+    cuerpo.appendChild(el('div', { class: 'mini', text: 'Ese proyecto ya no existe.' }));
+    return cuerpo;
+  }
+  const pasos = Modelo.pasosDe(pr.id);
+  const hechos = pasos.filter(p => Modelo.pasoListo(p)).length;
+
+  const titulo = el('button', { class: 'pz-proy-tit', type: 'button',
+    title: 'Reducir o desplegar', text: pr.nombre,
+    onclick: e => {
+      e.stopPropagation();
+      it.datos = Object.assign({}, it.datos, { reducida: !(it.datos || {}).reducida });
+      Datos.guardar('pizarra_items', it);
+      caja.classList.toggle('reducida', it.datos.reducida);
+    } });
+  cuerpo.appendChild(titulo);
+
+  const detalle = el('div', { class: 'pz-proy-cuerpo' });
+  detalle.appendChild(el('div', { class: 'pz-proy-meta', text:
+    `${hechos} de ${pasos.length} pasos` +
+    (pr.plazo_final ? ` · vence ${fechaCorta(pr.plazo_final)}` : '') +
+    (pr.urgencia ? ` · ${pr.urgencia}` : '') }));
+  if ((pr.designados || []).length) detalle.appendChild(el('div', { class: 'pz-proy-meta',
+    text: '★ ' + pr.designados.join(', ') }));
+
+  pasos.forEach((p, i) => {
+    const fila = el('label', { class: 'pz-proy-paso' + (Modelo.pasoListo(p) ? ' listo' : '') });
+    const chk = el('input', { type: 'checkbox' });
+    chk.checked = Modelo.pasoListo(p);
+    chk.disabled = Modelo.subDe(p.id).length > 0;
+    chk.addEventListener('change', () => {
+      p.estado = chk.checked ? 'Completado' : 'Pendiente';
+      Datos.guardar('pasos', p); render();
+    });
+    fila.appendChild(chk);
+    fila.appendChild(el('span', { text: `${i + 1}. ${p.descripcion || ''}` +
+      (p.plazo ? ` · ${fechaCorta(p.plazo)}` : '') }));
+    detalle.appendChild(fila);
+  });
+  if (pr.observaciones) detalle.appendChild(el('div', { class: 'pz-proy-obs', text: pr.observaciones }));
+  cuerpo.appendChild(detalle);
+  return cuerpo;
+}
+
+function cuerpoDibujo(it) {
+  const puntos = (it.datos && it.datos.trazo) || [];
+  const svg = document.createElementNS(Graficos.ns, 'svg');
+  const xs = puntos.map(p => p[0]), ys = puntos.map(p => p[1]);
+  const w = Math.max(...xs) - Math.min(...xs) + 8;
+  const h = Math.max(...ys) - Math.min(...ys) + 8;
+  svg.setAttribute('width', w); svg.setAttribute('height', h);
+  svg.setAttribute('class', 'pz-trazo');
+  const path = document.createElementNS(Graficos.ns, 'path');
+  const x0 = Math.min(...xs) - 4, y0 = Math.min(...ys) - 4;
+  path.setAttribute('d', puntos.map((p, i) =>
+    `${i ? 'L' : 'M'}${p[0] - x0},${p[1] - y0}`).join(' '));
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', colorItem(it.color));
+  path.setAttribute('stroke-width', '2.5');
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return svg;
+}
+
+/* ------------------------- arrastrar ------------------------------ */
+function arrastrable(caja, it) {
+  const asa = caja.querySelector('.pz-asa');
+  const empezar = e => {
+    /* Con la herramienta de conectar, tocar un elemento lo elige. */
+    if (herramienta === 'conexion') {
+      e.preventDefault(); e.stopPropagation();
+      if (!conexionDesde) { conexionDesde = it.id; caja.classList.add('elegido'); render(); }
+      else if (conexionDesde !== it.id) {
+        nuevoItem('conexion', { datos: { de: conexionDesde, a: it.id } });
+        conexionDesde = null; render();
+      }
+      return;
+    }
+    if (e.button !== 0) return;
+    e.preventDefault();
+    arrastrando = true;
+    caja.classList.add('moviendo');
+    const x0 = e.clientX, y0 = e.clientY;
+    const ix = it.x, iy = it.y;
+
+    const mover = ev => {
+      it.x = Math.max(0, ix + (ev.clientX - x0));
+      it.y = Math.max(0, iy + (ev.clientY - y0));
+      caja.style.left = it.x + 'px';
+      caja.style.top = it.y + 'px';
+      redibujarLineas();
+    };
+    const soltar = () => {
+      document.removeEventListener('mousemove', mover);
+      document.removeEventListener('mouseup', soltar);
+      caja.classList.remove('moviendo');
+      arrastrando = false;
+      Datos.guardar('pizarra_items', it);
+    };
+    document.addEventListener('mousemove', mover);
+    document.addEventListener('mouseup', soltar);
+  };
+  if (asa) asa.addEventListener('mousedown', empezar);
+  caja.addEventListener('mousedown', e => {
+    if (herramienta === 'conexion') empezar(e);
+  });
+}
+
+/* ------------------------- líneas del mapa ------------------------ */
+function centroDe(id) {
+  const n = document.querySelector(`.pz-item[data-item="${id}"]`);
+  if (!n) return null;
+  return { x: n.offsetLeft + n.offsetWidth / 2, y: n.offsetTop + n.offsetHeight / 2,
+           w: n.offsetWidth, h: n.offsetHeight };
+}
+
+function dibujarConexion(svg, it, cajas) {
+  const d = it.datos || {};
+  const linea = document.createElementNS(Graficos.ns, 'path');
+  linea.setAttribute('class', 'pz-linea');
+  linea.setAttribute('data-de', d.de);
+  linea.setAttribute('data-a', d.a);
+  linea.setAttribute('data-id', it.id);
+  linea.setAttribute('fill', 'none');
+  linea.setAttribute('stroke', '#b9b5a6');
+  linea.setAttribute('stroke-width', '2');
+  svg.appendChild(linea);
+}
+
+/* Una curva suave entre los dos centros. Se recalcula al arrastrar. */
+function redibujarLineas() {
+  document.querySelectorAll('.pz-linea').forEach(l => {
+    const a = centroDe(l.dataset.de), b = centroDe(l.dataset.a);
+    if (!a || !b) { l.setAttribute('d', ''); return; }
+    const dx = Math.abs(b.x - a.x) * 0.45;
+    l.setAttribute('d', `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x - dx},${b.y} ${b.x},${b.y}`);
+  });
+}
+
+/* ------------------------- el lienzo ------------------------------ */
+function conectarLienzo(lienzo, capa, svg) {
+  /* El SVG cubre todo el lienzo para que las líneas puedan cruzarlo. */
+  const medir = () => {
+    const w = Math.max(capa.scrollWidth, lienzo.clientWidth);
+    const h = Math.max(capa.scrollHeight, lienzo.clientHeight);
+    svg.setAttribute('width', w); svg.setAttribute('height', h);
+    redibujarLineas();
+  };
+  requestAnimationFrame(medir);
+  (window.REDIBUJAR = window.REDIBUJAR || []).push(medir);
+
+  if (herramienta !== 'dibujo') return;
+
+  /* Trazo a mano alzada: se junta la línea y al soltar se guarda entera. */
+  lienzo.addEventListener('mousedown', e => {
+    if (e.target.closest('.pz-item')) return;
+    e.preventDefault();
+    const caja = capa.getBoundingClientRect();
+    const puntos = [[e.clientX - caja.left, e.clientY - caja.top]];
+    const previo = document.createElementNS(Graficos.ns, 'path');
+    previo.setAttribute('fill', 'none');
+    previo.setAttribute('stroke', 'var(--uc-rojo)');
+    previo.setAttribute('stroke-width', '2.5');
+    previo.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(previo);
+
+    const mover = ev => {
+      puntos.push([ev.clientX - caja.left, ev.clientY - caja.top]);
+      previo.setAttribute('d', puntos.map((p, i) => `${i ? 'L' : 'M'}${p[0]},${p[1]}`).join(' '));
+    };
+    const soltar = () => {
+      document.removeEventListener('mousemove', mover);
+      document.removeEventListener('mouseup', soltar);
+      previo.remove();
+      if (puntos.length < 3) return;
+      const xs = puntos.map(p => p[0]), ys = puntos.map(p => p[1]);
+      nuevoItem('dibujo', {
+        x: Math.min(...xs) - 4, y: Math.min(...ys) - 4,
+        ancho: Math.max(...xs) - Math.min(...xs) + 8,
+        alto: Math.max(...ys) - Math.min(...ys) + 8,
+        color: 1, datos: { trazo: puntos }
+      });
+      render();
+    };
+    document.addEventListener('mousemove', mover);
+    document.addEventListener('mouseup', soltar);
+  });
+}
+
+/* ------------------------------------------------------------------ *
  * 8. Vista: Equipo
  * ------------------------------------------------------------------ */
 function vistaEquipo(raiz) {
@@ -2018,16 +2575,18 @@ function render() {
   UI.pintarModulos(nav);
   UI.migas($('#migas'), ['FECh 2026', 'SPT · Participación', {
     tablero: 'Tablero', panel: 'Panel', proyectos: 'Proyectos',
-    calendario: 'Calendario', equipo: 'Equipo' }[vista] || 'Tablero']);
-  $('#filtros').style.display = (vista === 'equipo' || vista === 'calendario') ? 'none' : '';
+    calendario: 'Calendario', pizarra: 'Pizarra', equipo: 'Equipo' }[vista] || 'Tablero']);
+  $('#filtros').style.display =
+    (vista === 'equipo' || vista === 'calendario' || vista === 'pizarra') ? 'none' : '';
   if (vista === 'tablero') vistaTablero(raiz);
   else if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'proyectos') vistaProyectos(raiz);
   else if (vista === 'calendario') vistaCalendario(raiz);
+  else if (vista === 'pizarra') vistaPizarra(raiz);
   else vistaEquipo(raiz);
 
   UI.alAbrir = () => (window.REDIBUJAR || []).forEach(f => f());
-  if (vista !== 'calendario') UI.plegarTarjetas(raiz, 'spt-' + vista);
+  if (vista !== 'calendario' && vista !== 'pizarra') UI.plegarTarjetas(raiz, 'spt-' + vista);
 }
 
 let oyentesGlobales = false;

@@ -1164,3 +1164,98 @@ select:focus,input:focus,textarea:focus{border-color:var(--uc-verde);
 .expl b{display:block; font-size:12px; text-transform:uppercase; letter-spacing:.05em;
   color:var(--uc-rojo); margin-bottom:3px; font-weight:600}
 .expl span{font-size:13px; line-height:1.55; color:var(--uc-texto)}
+
+/* --- la definición: lo primero que se lee al entrar ------------------- */
+.definicion{
+  font-size:15px; line-height:1.65; color:var(--uc-texto); max-width:72ch;
+  margin:6px 0 26px; padding:0 0 0 14px; border-left:3px solid var(--uc-rojo);
+  animation:aparece .45s var(--curva) both;
+}
+
+/* ==================================================================== *
+ * Pizarra
+ *
+ * Sin librerías: divs sueltos posicionados y un SVG por debajo para las
+ * líneas del mapa mental y los trazos a mano.
+ * ==================================================================== */
+
+.pz-barra{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center;
+  padding:10px 0 12px; border-bottom:1px solid var(--uc-linea); margin-bottom:0}
+.pz-grupo{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.pz-sel{width:auto; max-width:190px; font-size:12.5px; padding:5px 7px}
+.pz-nombre{width:auto; max-width:180px; font-size:13px; font-weight:600; padding:5px 7px}
+.pz-pista{flex-basis:100%; font-size:12px; color:var(--uc-rojo)}
+.pz-vacia{font-size:13px; color:var(--uc-suave); margin:14px 2px; max-width:62ch}
+
+.pz-lienzo{
+  position:relative; overflow:auto; height:min(74vh, 760px);
+  border:1px solid var(--uc-linea); border-radius:6px;
+  background:#fdfdfb;
+  background-image:radial-gradient(circle, #e6e4d8 1px, transparent 1px);
+  background-size:22px 22px;
+}
+.pz-lienzo.modo-dibujo{cursor:crosshair}
+.pz-lienzo.modo-conexion{cursor:cell}
+.pz-capa{position:relative; width:2400px; height:1600px}
+.pz-lineas{position:absolute; left:0; top:0; pointer-events:none; z-index:1}
+
+/* --- un elemento sobre la pizarra ------------------------------------ */
+.pz-item{
+  position:absolute; z-index:2; border-radius:6px; background:#fff;
+  border:1px solid rgba(0,0,0,.10);
+  box-shadow:0 1px 3px rgba(0,0,0,.09);
+  transition:box-shadow .16s var(--curva);
+}
+.pz-item:hover{box-shadow:0 4px 12px rgba(0,0,0,.14); z-index:3}
+.pz-item.moviendo{box-shadow:0 10px 26px rgba(0,0,0,.2); z-index:9; transition:none}
+.pz-item.elegido{outline:2px solid var(--uc-rojo); outline-offset:2px}
+.pz-asa{display:flex; align-items:center; justify-content:space-between; gap:6px;
+  padding:3px 5px 2px; cursor:grab; border-bottom:1px solid rgba(0,0,0,.06)}
+.pz-item.moviendo .pz-asa{cursor:grabbing}
+.pz-punto{width:26px; height:4px; border-radius:2px; background:rgba(0,0,0,.16)}
+.pz-x{background:none; border:none; cursor:pointer; color:#b0aca0; font-size:11px;
+  line-height:1; padding:2px 3px; border-radius:3px}
+.pz-x:hover{color:var(--critical); background:rgba(0,0,0,.05)}
+
+.pz-item.tipo-nota{background:var(--c); border-color:rgba(0,0,0,.08)}
+.pz-item.tipo-nota .pz-asa{border-bottom-color:rgba(0,0,0,.09)}
+.pz-item.tipo-texto{background:#fff; border-left:4px solid var(--c)}
+.pz-texto{width:100%; border:none; background:none; resize:none; padding:6px 8px;
+  font-size:13px; line-height:1.45; color:#333; font-family:inherit; overflow:hidden}
+.pz-texto:focus{outline:none; box-shadow:none}
+
+/* --- tabla que se genera --------------------------------------------- */
+.pz-item.tipo-tabla{background:#fff; border-top:4px solid var(--c)}
+.pz-tabla{padding:4px}
+.pz-tabla table{width:100%; border-collapse:collapse}
+.pz-tabla td{border:1px solid var(--uc-linea); padding:0}
+.pz-tabla input{border:none; border-radius:0; padding:4px 6px; font-size:12px; background:none}
+.pz-tabla input:focus{box-shadow:inset 0 0 0 2px rgba(47,125,118,.3)}
+.pz-tabla input.cabecera{font-weight:600; background:#faf9f4}
+.pz-tabla-pie{display:flex; gap:5px; padding:5px 2px 2px}
+.pz-tabla-pie .btn{font-size:11px; padding:3px 7px}
+
+/* --- ventana de proyecto, reducible ---------------------------------- */
+.pz-item.tipo-proyecto{background:#fff; border-top:4px solid var(--c); width:auto; min-width:250px}
+.pz-proy-tit{display:block; width:100%; text-align:left; background:none; border:none;
+  cursor:pointer; font-size:13.5px; font-weight:600; color:var(--uc-texto);
+  padding:7px 9px 5px; line-height:1.3}
+.pz-proy-tit::before{content:'▾ '; color:var(--uc-suave); font-size:10px}
+.pz-item.reducida .pz-proy-tit::before{content:'▸ '}
+.pz-item.reducida .pz-proy-cuerpo{display:none}
+.pz-proy-cuerpo{padding:0 9px 9px}
+.pz-proy-meta{font-size:11.5px; color:var(--uc-suave); margin-bottom:4px}
+.pz-proy-paso{display:flex; gap:6px; align-items:flex-start; font-size:12px;
+  line-height:1.4; padding:2px 0; cursor:pointer}
+.pz-proy-paso input{width:14px; height:14px; margin:2px 0 0; flex:none}
+.pz-proy-paso.listo span{text-decoration:line-through; color:var(--uc-suave)}
+.pz-proy-obs{font-size:11.5px; color:var(--uc-suave); margin-top:6px; padding-top:6px;
+  border-top:1px solid var(--uc-linea); font-style:italic}
+
+.pz-item.tipo-dibujo{background:none; border:none; box-shadow:none; pointer-events:none}
+.pz-item.tipo-dibujo:hover{box-shadow:none}
+
+@media (max-width:640px){
+  .pz-lienzo{height:62vh}
+  .pz-sel,.pz-nombre{max-width:140px}
+}
