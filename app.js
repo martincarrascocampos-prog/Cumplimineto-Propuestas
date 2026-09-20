@@ -739,7 +739,9 @@ function abrirPropuesta(p) {
 function explicador() {
   const punto = (t, d) => el('div', { class: 'expl' }, [
     el('b', { text: t }), el('span', { text: d })]);
-  return el('div', { class: 'expl-caja' }, [
+  return el('div', {}, [
+    el('p', { class: 'definicion', text: DEFINICION }),
+    el('div', { class: 'expl-caja' }, [
     punto('Qué mide', 'El promedio de avance de las 102 propuestas del programa ' +
       'Conectemos la Chile, repartidas entre los siete equipos de la Mesa.'),
     punto('Las cuatro marcas', '50% a medio camino · 70% mínimo · 80% ideal · 90% logro. ' +
@@ -748,6 +750,7 @@ function explicador() {
       'propuesta sigue como va.'),
     punto('Etapas', 'Si una propuesta se divide en etapas, el avance lo calculan ellas. ' +
       'Las de Participación son los pasos de su SPT.')
+    ])
   ]);
 }
 
@@ -758,7 +761,6 @@ const DEFINICION =
   'documentos, hasta la calendarización de reuniones y ejecución de proyectos.';
 
 function vistaPanel(raiz) {
-  raiz.appendChild(el('p', { class: 'definicion', text: DEFINICION }));
   raiz.appendChild(UI.seccion('que-es', '¿Conectómetro?',
     'Qué mide y cómo se lee', [explicador()], { abierta: false }));
 

@@ -167,14 +167,7 @@ function cumplimientoDe(lista) {
   return Math.round(lista.reduce((a, it) => a + avanceDe(it), 0) / lista.length);
 }
 
-const DEFINICION =
-  'El Conectómetro es el espacio de trabajo central e interactivo de la Secretaría de ' +
-  'Participación. Funciona como el cerebro logístico y visual de la plataforma, midiendo y ' +
-  'vinculando en tiempo real el flujo de trabajo: desde el nacimiento de ideas y revisión de ' +
-  'documentos, hasta la calendarización de reuniones y ejecución de proyectos.';
-
 function vistaTablero(raiz) {
-  raiz.appendChild(el('p', { class: 'definicion', text: DEFINICION }));
   const todos = items();
   const activos = todos.filter(it => campo(it, 'estado', 'Activo') === 'Activo');
   const lista = filtrados();
@@ -619,7 +612,11 @@ function tarjetaProyecto(it) {
   card.appendChild(cajaGente);
 
   /* --- pasos --- */
-  card.appendChild(el('div', { class: 'bloque-t', text: 'Pasos' }));
+  card.appendChild(el('div', { class: 'bloque-t' }, [
+    document.createTextNode('Pasos'),
+    el('span', { class: 'bloque-pista',
+      text: '· "Detalle" abre fechas, encargades, observaciones y sub-pasos' })
+  ]));
   /* --- pasos, con sus sub-pasos ------------------------------------- *
    * Cada paso puede abrirse para ver su detalle: fechas de inicio y
    * plazo, quién lo lleva, sus observaciones y los sub-pasos en que se
@@ -960,14 +957,17 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
 
   const detalle = el('div', { class: 'paso-detalle', hidden: true });
   let abierto = false;
-  const abrir = el('button', { class: 'ico', type: 'button', text: '▸',
-    'aria-label': 'Ver el detalle del paso',
-    onclick: () => {
-      abierto = !abierto;
-      abrir.textContent = abierto ? '▾' : '▸';
-      detalle.hidden = !abierto;
-      if (abierto) pintarDetalle();
-    } });
+  const abrir = el('button', { class: 'btn btn-sm paso-mas', type: 'button',
+    'aria-expanded': 'false',
+    title: 'Fechas, encargades, observaciones y sub-pasos' },
+    [el('i', { class: 'acc-flecha', 'aria-hidden': 'true' }),
+     el('span', { text: 'Detalle' })]);
+  abrir.addEventListener('click', () => {
+    abierto = !abierto;
+    abrir.setAttribute('aria-expanded', String(abierto));
+    detalle.hidden = !abierto;
+    if (abierto) pintarDetalle();
+  });
 
   const pintarDetalle = () => {
     detalle.innerHTML = '';
@@ -978,7 +978,7 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
     inicio.addEventListener('change', () => { paso.inicio = inicio.value; Datos.guardar('pasos', paso); });
     const plazo = el('input', { type: 'date', value: paso.plazo || '' });
     plazo.addEventListener('change', () => {
-      paso.plazo = plazo.value; Datos.guardar('pasos', paso); alCambiar();
+      paso.plazo = plazo.value; Datos.guardar('pasos', paso); pintarResumen();
     });
 
     /* Encargade principal del paso: puede no ser quien lleva el proyecto. */
@@ -987,7 +987,7 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
       if (v && !(paso.encargados || []).includes(v)) {
         paso.encargados = [v, ...(paso.encargados || [])].slice(0, 3);
       }
-      Datos.guardar('pasos', paso); alCambiar();
+      Datos.guardar('pasos', paso); pintarResumen();
     }, 'Sin encargade principal');
 
     detalle.appendChild(el('div', { class: 'campos' }, [
@@ -1017,7 +1017,7 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
             const ya = paso.encargados || [];
             paso.encargados = dentro ? ya.filter(x => x !== n) : [...ya, n];
             if (dentro && paso.principal === n) paso.principal = '';
-            Datos.guardar('pasos', paso); pintarAcomp(); alCambiar();
+            Datos.guardar('pasos', paso); pintarAcomp(); pintarResumen();
           } }));
       });
     };
@@ -1029,7 +1029,7 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
       rows: 2 });
     obs.value = paso.observaciones || '';
     obs.addEventListener('change', () => {
-      paso.observaciones = obs.value; Datos.guardar('pasos', paso); alCambiar();
+      paso.observaciones = obs.value; Datos.guardar('pasos', paso); pintarResumen();
     });
     detalle.appendChild(el('label', { class: 'field' },
       [el('span', { text: 'Observaciones del paso' }), obs]));
@@ -1057,6 +1057,29 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
     }
   };
 
+  /* Un renglón que muestra lo que ya está cargado, sin tener que abrir.
+     Se refresca solo: si repintáramos la lista entera, el detalle abierto
+     se cerraría en cada tecla. */
+  const cajaResumen = el('div', { class: 'paso-resumen' });
+  const pintarResumen = () => {
+    const r = [];
+    if (paso.inicio) r.push('empieza ' + fechaCorta(paso.inicio));
+    if (paso.plazo) r.push('termina ' + fechaCorta(paso.plazo));
+    if (paso.principal) r.push('★ ' + paso.principal);
+    const otros = (paso.encargados || []).filter(n => n !== paso.principal);
+    if (otros.length) r.push('con ' + otros.join(', '));
+    const subs = Modelo.subDe(paso.id);
+    if (subs.length) r.push(`${subs.filter(h => h.estado === 'Completado').length} de ${subs.length} sub-pasos`);
+    if (paso.observaciones) r.push('✎ ' + recorta(paso.observaciones, 60));
+    cajaResumen.innerHTML = '';
+    r.forEach(t => cajaResumen.appendChild(el('span', { text: t })));
+    cajaResumen.hidden = !r.length || esSub;
+    /* La fecha de la fila de arriba sigue a la del detalle. */
+    fecha.value = paso.plazo || '';
+    fecha.classList.toggle('vencido',
+      Boolean(paso.plazo) && !Modelo.pasoListo(paso) && paso.plazo < hoy());
+  };
+
   caja.appendChild(el('div', { class: 'paso' + (listo ? ' listo' : '') }, [
     el('span', { class: 'n', text: numero }), chk, desc, señas, fecha, est, abrir,
     el('button', { class: 'x', type: 'button', text: '✕', title: 'Eliminar paso',
@@ -1065,6 +1088,8 @@ function filaPaso(paso, numero, pr, alCambiar, esSub) {
         UI.borrarConDeshacer('pasos', { ...paso }, 'Paso', alCambiar);
       } })
   ]));
+  caja.appendChild(cajaResumen);
+  pintarResumen();
   caja.appendChild(detalle);
   return caja;
 }
@@ -1803,6 +1828,461 @@ function descargar(nombre, contenido, tipo) {
   const a = el('a', { href: url, download: nombre });
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+
+/* ------------------------------------------------------------------ *
+ * Reuniones: la tabla de planificación
+ *
+ * Una fila por reunión —fecha, hora, tema, asistentes, videollamada— y,
+ * al abrirla, su tabla de puntos: qué se trata, quién lo trae y en qué
+ * quedó. Esos puntos son los que después la pizarra convierte en nodos.
+ * ------------------------------------------------------------------ */
+
+const Videollamada = {
+  estado: null,
+  async preguntar() {
+    if (this.estado) return this.estado;
+    try {
+      const r = await fetch('/api/reuniones/estado');
+      if (!r.ok) throw new Error('sin servidor');
+      this.estado = await r.json();
+    } catch {
+      this.estado = { configurado: false, sinServidor: true };
+    }
+    return this.estado;
+  },
+  async crear(ev, puntos, calendario) {
+    const r = await fetch('/api/reuniones/videollamada', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: ev.id, tema: ev.tema, inicio: ev.inicio,
+        duracion: ev.duracion, lugar: ev.lugar, invitados: ev.invitados,
+        puntos, calendario })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo crear la videollamada.');
+    return j;
+  }
+};
+
+const puntosDe = reunionId => Datos.todo('puntos')
+  .filter(p => p.reunion === reunionId)
+  .sort((a, b) => (a.orden || 0) - (b.orden || 0));
+
+function tablaReuniones(raiz) {
+  const card = el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Planificación de reuniones' }),
+    el('div', { class: 'sub', text: 'Fecha, hora, temas y asistentes. Abre una para su tabla de puntos.' })
+  ]);
+
+  const reuniones = Datos.todo('agenda').slice()
+    .sort((a, b) => String(b.inicio || '').localeCompare(String(a.inicio || '')));
+
+  const tabla = el('table', { class: 'tabla-reuniones' });
+  tabla.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: '' }), el('th', { text: 'Fecha' }), el('th', { text: 'Hora' }),
+    el('th', { text: 'Tema' }), el('th', { text: 'Asistentes' }),
+    el('th', { text: 'Puntos' }), el('th', { text: 'Videollamada' }), el('th', { text: '' })
+  ])));
+  const tb = el('tbody');
+
+  if (!reuniones.length) {
+    tb.appendChild(el('tr', {}, el('td', { colspan: 8 },
+      el('div', { class: 'empty', text: 'Todavía no hay reuniones agendadas.' }))));
+  }
+
+  reuniones.forEach(ev => {
+    const abierta = !!abiertos['r:' + ev.id];
+    const guarda = (campo, valor) => { ev[campo] = valor; Datos.guardar('agenda', ev); };
+
+    const fecha = el('input', { type: 'date', value: (ev.inicio || '').slice(0, 10) });
+    fecha.addEventListener('change', () => {
+      guarda('inicio', fecha.value + 'T' + ((ev.inicio || '').slice(11, 16) || '18:00'));
+      render();
+    });
+    const hora = el('input', { type: 'time', value: (ev.inicio || '').slice(11, 16) || '18:00' });
+    hora.addEventListener('change', () => {
+      guarda('inicio', ((ev.inicio || '').slice(0, 10) || hoy()) + 'T' + hora.value);
+      render();
+    });
+    const tema = el('input', { type: 'text', value: ev.tema || '', placeholder: 'Tema de la reunión' });
+    tema.addEventListener('change', () => guarda('tema', tema.value));
+    const gente = el('input', { type: 'text', value: ev.invitados || '',
+      placeholder: 'Nombres separados por coma' });
+    gente.addEventListener('change', () => guarda('invitados', gente.value));
+
+    const nPuntos = puntosDe(ev.id).length;
+    const abrir = el('button', { class: 'ico', type: 'button', text: abierta ? '▾' : '▸',
+      'aria-label': 'Ver los puntos', onclick: () => {
+        abiertos['r:' + ev.id] = !abierta; render();
+      } });
+
+    tb.appendChild(el('tr', { class: abierta ? 'abierta' : '' }, [
+      el('td', {}, abrir),
+      el('td', {}, fecha), el('td', {}, hora), el('td', {}, tema), el('td', {}, gente),
+      el('td', { class: 'num' }, el('button', { class: 'btn btn-sm', type: 'button',
+        text: String(nPuntos), title: 'Puntos a tratar',
+        onclick: () => { abiertos['r:' + ev.id] = !abierta; render(); } })),
+      el('td', {}, celdaVideollamada(ev)),
+      el('td', {}, el('button', { class: 'x', type: 'button', text: '✕',
+        onclick: () => {
+          puntosDe(ev.id).forEach(p => Datos.borrar('puntos', p.id));
+          UI.borrarConDeshacer('agenda', { ...ev }, 'Reunión', render);
+        } }))
+    ]));
+
+    if (abierta) {
+      tb.appendChild(el('tr', { class: 'fila-puntos' },
+        el('td', { colspan: 8 }, tablaPuntos(ev))));
+    }
+  });
+  tabla.appendChild(tb);
+  card.appendChild(el('div', { class: 'tablewrap' }, tabla));
+
+  /* Agendar una nueva desde acá mismo. */
+  const nTema = el('input', { type: 'text', placeholder: 'Tema de la reunión', style: 'max-width:260px' });
+  const nFecha = el('input', { type: 'date', value: hoy(), style: 'max-width:160px' });
+  const nHora = el('input', { type: 'time', value: '18:00', style: 'max-width:120px' });
+  const agendar = () => {
+    if (!nTema.value.trim()) { nTema.focus(); return; }
+    asegurarCalendario();
+    Datos.guardar('agenda', { id: uid(), tema: nTema.value.trim(),
+      inicio: nFecha.value + 'T' + (nHora.value || '18:00'), duracion: 60,
+      formato: 'Presencial', lugar: '', invitados: filtros.persona || '',
+      estado: 'Por agendar', proyecto: null, calendario: asegurarCalendario().id,
+      videollamada: '' });
+    nTema.value = ''; render();
+  };
+  nTema.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agendar(); } });
+  card.appendChild(el('div', { class: 'toolbar' }, [
+    nTema, nFecha, nHora,
+    el('button', { class: 'btn btn-sm btn-primary', type: 'button', text: 'Agendar', onclick: agendar })
+  ]));
+  raiz.appendChild(card);
+}
+
+/* La celda de la videollamada: el enlace si ya está, y si no, las dos
+   maneras de conseguirlo. */
+function celdaVideollamada(ev) {
+  const caja = el('div', { class: 'vc' });
+
+  if (ev.videollamada) {
+    caja.appendChild(el('a', { class: 'vc-enlace', href: ev.videollamada, target: '_blank',
+      rel: 'noopener', title: ev.videollamada,
+      text: /zoom\./i.test(ev.videollamada) ? 'Zoom' : 'Meet' }));
+    caja.appendChild(el('button', { class: 'x', type: 'button', text: '✕', title: 'Quitar el enlace',
+      onclick: () => { ev.videollamada = ''; Datos.guardar('agenda', ev); render(); } }));
+    return caja;
+  }
+
+  const crear = el('button', { class: 'btn btn-sm', type: 'button', text: 'Crear Meet',
+    hidden: true, title: 'Crea el evento en Google con su enlace de Meet' });
+  crear.addEventListener('click', async () => {
+    crear.disabled = true; crear.textContent = 'Creando…';
+    try {
+      const cal = calendarioDe(ev.calendario);
+      const r = await Videollamada.crear(ev, puntosDe(ev.id).map(p => p.texto),
+        cal && cal.gcal_id ? cal.gcal_id : '');
+      ev.videollamada = r.enlace;
+      ev.gcal_id = r.evento;
+      Datos.guardar('agenda', ev);
+      UI.aviso('Meet creado');
+      render();
+    } catch (e) {
+      UI.aviso(e.message);
+      crear.disabled = false; crear.textContent = 'Crear Meet';
+    }
+  });
+  Videollamada.preguntar().then(es => {
+    const cal = calendarioDe(ev.calendario);
+    if (es.configurado || (cal && cal.gcal_id && !es.sinServidor)) crear.hidden = false;
+  });
+  caja.appendChild(crear);
+
+  /* Camino corto, siempre disponible: Google con la reunión ya escrita. */
+  caja.appendChild(el('a', { class: 'btn btn-sm', href: enlaceGoogle(ev), target: '_blank',
+    rel: 'noopener', text: 'En Google', title: 'Abre Google Calendar con la reunión escrita; ' +
+      'ahí se añade el Meet con un clic' }));
+
+  const pegar = el('button', { class: 'btn btn-sm', type: 'button', text: 'Pegar enlace',
+    title: 'Para Zoom, o un Meet creado a mano' });
+  pegar.addEventListener('click', () => {
+    const url = prompt('Pega el enlace de la videollamada (Zoom o Meet):', '');
+    if (url === null) return;
+    ev.videollamada = url.trim(); Datos.guardar('agenda', ev); render();
+  });
+  caja.appendChild(pegar);
+  return caja;
+}
+
+/* La tabla de puntos de una reunión. */
+function tablaPuntos(ev) {
+  const caja = el('div', { class: 'puntos' });
+  caja.appendChild(el('div', { class: 'puntos-tit', text: 'Puntos a tratar' }));
+
+  const tabla = el('table');
+  tabla.appendChild(el('thead', {}, el('tr', {}, [
+    el('th', { text: '#' }), el('th', { text: 'Tema' }), el('th', { text: 'Quién lo trae' }),
+    el('th', { text: 'En qué quedó' }), el('th', { text: 'Estado' }), el('th', { text: '' })
+  ])));
+  const tb = el('tbody');
+  const lista = puntosDe(ev.id);
+
+  if (!lista.length) tb.appendChild(el('tr', {}, el('td', { colspan: 6 },
+    el('div', { class: 'mini', text: 'Sin puntos todavía.' }))));
+
+  lista.forEach((p, i) => {
+    const campo = (valor, nombre, ph) => {
+      const inp = el('input', { type: 'text', value: valor || '', placeholder: ph || '' });
+      inp.addEventListener('change', () => { p[nombre] = inp.value; Datos.guardar('puntos', p); });
+      return inp;
+    };
+    tb.appendChild(el('tr', {}, [
+      el('td', { class: 'num', text: String(i + 1) }),
+      el('td', {}, campo(p.texto, 'texto', 'Qué se trata')),
+      el('td', {}, selector(personasElegibles(), p.responsable || '',
+        v => { p.responsable = v; Datos.guardar('puntos', p); }, 'Sin asignar')),
+      el('td', {}, campo(p.acuerdo, 'acuerdo', 'Acuerdo o pendiente')),
+      el('td', {}, selector(['Pendiente', 'Tratado', 'Se arrastra'], p.estado || 'Pendiente',
+        v => { p.estado = v; Datos.guardar('puntos', p); render(); }, null)),
+      el('td', {}, el('button', { class: 'x', type: 'button', text: '✕',
+        onclick: () => UI.borrarConDeshacer('puntos', { ...p }, 'Punto', render) }))
+    ]));
+  });
+  tabla.appendChild(tb);
+  caja.appendChild(el('div', { class: 'tablewrap' }, tabla));
+
+  const nuevo = el('input', { type: 'text', placeholder: 'Nuevo punto…', style: 'max-width:280px' });
+  const agregar = () => {
+    if (!nuevo.value.trim()) return;
+    Datos.guardar('puntos', { id: uid(), reunion: ev.id, texto: nuevo.value.trim(),
+      responsable: '', acuerdo: '', estado: 'Pendiente', orden: puntosDe(ev.id).length });
+    nuevo.value = ''; render();
+  };
+  nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); agregar(); } });
+  caja.appendChild(el('div', { class: 'toolbar' }, [
+    nuevo,
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Agregar punto', onclick: agregar }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: '→ Llevar a la pizarra',
+      title: 'Convierte estos puntos en nodos de una pizarra',
+      onclick: () => {
+        vista = 'pizarra'; marcarTab(); render();
+        requestAnimationFrame(() => traerPuntos(ev.id));
+      } })
+  ]));
+  return caja;
+}
+
+
+/* ------------------------------------------------------------------ *
+ * 10. Carpeta
+ *
+ * La vista previa de la carpeta real de la Secretaría, y el índice de
+ * todo lo que el equipo ha ido colgando de sus proyectos. Los dos lados
+ * son el mismo lugar visto distinto:
+ *
+ *   · lo que está en Drive se lista en vivo desde el servidor
+ *   · lo que se pegó en un proyecto aparece acá sin copiar nada, porque
+ *     se lee la misma tabla 'enlaces'
+ *
+ * Y los accesos son de ida y vuelta: del documento se salta al proyecto
+ * que lo usa, y del proyecto al documento.
+ * ------------------------------------------------------------------ */
+
+let carpetaAbierta = null;      /* subcarpeta de Drive que se está mirando */
+
+/* Todo documento del sistema, venga de donde venga. */
+function documentos() {
+  return Datos.todo('enlaces').map(e => {
+    const pr = e.proyecto ? Datos.uno('proyectos', e.proyecto) : null;
+    return {
+      id: e.id, nombre: e.nombre || 'Sin nombre', url: e.url || '',
+      proyecto: pr, fila: e,
+      ambito: pr ? pr.nombre : 'General de la secretaría'
+    };
+  });
+}
+
+function vistaCarpeta(raiz) {
+  const docs = documentos();
+  const conUrl = docs.filter(d => d.url);
+  const sinUrl = docs.filter(d => !d.url);
+
+  raiz.appendChild(el('p', { class: 'intro',
+    text: 'Todo lo que la Secretaría guarda: la carpeta de Drive tal como está ahora y ' +
+          'los documentos que cada proyecto tiene colgados. Es la misma información, no una copia.' }));
+
+  /* --- 1. La carpeta real, en vivo --- */
+  const vivo = el('div', {});
+  Drive.preguntar().then(es => {
+    vivo.innerHTML = '';
+    if (!es.configurado) {
+      vivo.appendChild(el('div', { class: 'note' }, [
+        el('b', { text: 'La carpeta de Drive todavía no está conectada. ' }),
+        document.createTextNode(es.sinServidor
+          ? 'Esta copia se abrió sin servidor, así que no puede hablar con Drive.'
+          : (es.motivo || '')),
+        el('p', { text: 'Mientras tanto, el índice de abajo funciona igual: recoge todos los ' +
+          'enlaces que el equipo ya pegó en sus proyectos.' })
+      ]));
+      return;
+    }
+    vivo.appendChild(migasDrive());
+    vivo.appendChild(listadoDrive(carpetaAbierta || es.carpeta, docs));
+  });
+  raiz.appendChild(UI.seccion('carpeta-drive', 'Carpeta de la Secretaría',
+    'Vista previa de lo que hay en Drive ahora mismo', [vivo]));
+
+  /* --- 2. El índice por proyecto --- */
+  const porProyecto = new Map();
+  conUrl.forEach(d => {
+    const clave = d.proyecto ? d.proyecto.id : '';
+    if (!porProyecto.has(clave)) porProyecto.set(clave, []);
+    porProyecto.get(clave).push(d);
+  });
+
+  const indice = el('div', { class: 'carp-indice' });
+  const generales = porProyecto.get('') || [];
+  if (generales.length) indice.appendChild(grupoDocs('General de la secretaría', null, generales));
+  [...porProyecto.entries()].filter(([k]) => k).forEach(([id, lista]) => {
+    const pr = Datos.uno('proyectos', id);
+    indice.appendChild(grupoDocs(pr ? pr.nombre : 'Proyecto eliminado', pr, lista));
+  });
+  if (!conUrl.length) indice.appendChild(el('div', { class: 'empty',
+    text: 'Todavía no hay documentos con dirección. Se agregan desde cada proyecto, en ' +
+          '"Carpetas y documentos".' }));
+
+  raiz.appendChild(UI.seccion('carpeta-indice', 'Documentos del equipo',
+    `${conUrl.length} con dirección` + (sinUrl.length ? ` · ${sinUrl.length} sin pegar` : ''),
+    [indice]));
+
+  /* --- 3. Lo que falta por completar --- */
+  if (sinUrl.length) {
+    const pend = el('div', { class: 'carp-pend' });
+    sinUrl.forEach(d => {
+      const inp = el('input', { type: 'url', value: '', placeholder: 'https://drive.google.com/…' });
+      inp.addEventListener('change', () => {
+        d.fila.url = inp.value.trim(); Datos.guardar('enlaces', d.fila); render();
+      });
+      pend.appendChild(el('div', { class: 'carp-fila' }, [
+        UI.icono('documentos', 16),
+        el('span', { class: 'carp-nombre', text: d.nombre }),
+        el('span', { class: 'carp-ambito', text: d.ambito }),
+        inp
+      ]));
+    });
+    raiz.appendChild(UI.seccion('carpeta-pendientes', 'Sin dirección todavía',
+      `${sinUrl.length} documentos creados pero sin enlace`, [pend], { abierta: false }));
+  }
+}
+
+function migasDrive() {
+  const caja = el('div', { class: 'carp-migas' });
+  caja.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: '↑ Carpeta principal',
+    onclick: () => { carpetaAbierta = null; render(); } }));
+  if (carpetaAbierta) caja.appendChild(el('span', { class: 'mini', text: 'dentro de una subcarpeta' }));
+  return caja;
+}
+
+/* El contenido de Drive, cruzado con lo que ya está enlazado a un proyecto. */
+function listadoDrive(carpeta, docs) {
+  const caja = el('div', { class: 'carp-lista' });
+  caja.appendChild(el('div', { class: 'mini', text: 'Leyendo Drive…' }));
+
+  Drive.listar(carpeta, false).then(archivos => {
+    caja.innerHTML = '';
+    if (!archivos.length) {
+      caja.appendChild(el('div', { class: 'empty', text: 'La carpeta está vacía.' }));
+      return;
+    }
+    archivos.forEach(a => {
+      /* ¿Este archivo ya está colgado de algún proyecto? */
+      const usado = docs.find(d => d.url && (d.url.includes(a.id) || d.url === a.url));
+
+      const fila = el('div', { class: 'carp-fila' + (a.esCarpeta ? ' es-carpeta' : '') }, [
+        UI.icono(a.esCarpeta ? 'proyecto' : 'documentos', 16),
+        a.esCarpeta
+          ? el('button', { class: 'carp-nombre linktitle', type: 'button', text: a.nombre,
+              title: 'Abrir esta subcarpeta',
+              onclick: () => { carpetaAbierta = a.id; render(); } })
+          : el('a', { class: 'carp-nombre', href: a.url, target: '_blank', rel: 'noopener',
+              text: a.nombre }),
+        el('span', { class: 'carp-tipo', text: a.tipo }),
+        el('span', { class: 'carp-fecha', text: fechaCorta(a.modificado) })
+      ]);
+
+      /* Acceso de ida y vuelta: del documento al proyecto que lo usa. */
+      if (usado && usado.proyecto) {
+        fila.appendChild(el('button', { class: 'carp-proy', type: 'button',
+          title: 'Ir al proyecto que usa este documento',
+          text: '→ ' + recorta(usado.proyecto.nombre, 26),
+          onclick: () => {
+            vista = 'proyectos';
+            filtros.texto = usado.proyecto.nombre;
+            abiertos['O:' + usado.proyecto.id] = true;
+            marcarTab(); render();
+          } }));
+      } else if (!a.esCarpeta) {
+        fila.appendChild(vincularA(a));
+      }
+      caja.appendChild(fila);
+    });
+  }).catch(e => {
+    caja.innerHTML = '';
+    caja.appendChild(el('div', { class: 'note', text: e.message }));
+  });
+  return caja;
+}
+
+/* Colgar un archivo de Drive de un proyecto, sin salir de acá. */
+function vincularA(archivo) {
+  const sel = el('select', { class: 'carp-vincular', title: 'Colgar este documento de un proyecto' });
+  sel.appendChild(el('option', { value: '', text: 'Vincular a…' }));
+  items().forEach(it => sel.appendChild(el('option', { value: it.clave,
+    text: recorta(it.nombre, 30) })));
+  sel.addEventListener('change', () => {
+    if (!sel.value) return;
+    const it = items().find(x => x.clave === sel.value);
+    if (!it) return;
+    const pr = asegurar(it);
+    Datos.guardar('enlaces', { id: uid(), proyecto: pr.id,
+      nombre: archivo.nombre, url: archivo.url });
+    UI.aviso(`"${recorta(archivo.nombre, 24)}" quedó en ${recorta(pr.nombre, 24)}`);
+    render();
+  });
+  return sel;
+}
+
+function grupoDocs(titulo, pr, lista) {
+  const caja = el('div', { class: 'carp-grupo' });
+  const cab = el('div', { class: 'carp-grupo-cab' }, [
+    el('b', { text: titulo }),
+    el('span', { class: 'mini', text: `${lista.length} documento${lista.length === 1 ? '' : 's'}` })
+  ]);
+  /* Del documento al proyecto, y del grupo al proyecto. */
+  if (pr) cab.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Ver el proyecto →',
+    onclick: () => {
+      vista = 'proyectos'; filtros.texto = pr.nombre;
+      abiertos['O:' + pr.id] = true; marcarTab(); render();
+    } }));
+  caja.appendChild(cab);
+
+  lista.forEach(d => caja.appendChild(el('div', { class: 'carp-fila' }, [
+    UI.icono('documentos', 16),
+    el('a', { class: 'carp-nombre', href: d.url, target: '_blank', rel: 'noopener', text: d.nombre }),
+    el('span', { class: 'carp-url', text: d.url.replace(/^https?:\/\//, '').slice(0, 44) }),
+    el('button', { class: 'x', type: 'button', text: '✕', title: 'Quitar el documento',
+      onclick: () => UI.borrarConDeshacer('enlaces', { ...d.fila }, 'Documento', render) })
+  ])));
+  return caja;
+}
+
+function vistaReuniones(raiz) {
+  raiz.appendChild(el('p', { class: 'intro',
+    text: 'Cada reunión con su fecha, su hora, quiénes van y su tabla de puntos. ' +
+          'Los puntos se llevan a la pizarra con un botón, y el enlace de la ' +
+          'videollamada queda guardado en la misma fila.' }));
+  tablaReuniones(raiz);
 }
 
 /* ------------------------------------------------------------------ *
@@ -2575,18 +3055,21 @@ function render() {
   UI.pintarModulos(nav);
   UI.migas($('#migas'), ['FECh 2026', 'SPT · Participación', {
     tablero: 'Tablero', panel: 'Panel', proyectos: 'Proyectos',
-    calendario: 'Calendario', pizarra: 'Pizarra', equipo: 'Equipo' }[vista] || 'Tablero']);
+    calendario: 'Calendario', reuniones: 'Reuniones', pizarra: 'Pizarra',
+    carpeta: 'Carpeta', equipo: 'Equipo' }[vista] || 'Tablero']);
   $('#filtros').style.display =
-    (vista === 'equipo' || vista === 'calendario' || vista === 'pizarra') ? 'none' : '';
+    ['equipo', 'calendario', 'pizarra', 'carpeta', 'reuniones'].includes(vista) ? 'none' : '';
   if (vista === 'tablero') vistaTablero(raiz);
   else if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'proyectos') vistaProyectos(raiz);
   else if (vista === 'calendario') vistaCalendario(raiz);
   else if (vista === 'pizarra') vistaPizarra(raiz);
+  else if (vista === 'carpeta') vistaCarpeta(raiz);
+  else if (vista === 'reuniones') vistaReuniones(raiz);
   else vistaEquipo(raiz);
 
   UI.alAbrir = () => (window.REDIBUJAR || []).forEach(f => f());
-  if (vista !== 'calendario' && vista !== 'pizarra') UI.plegarTarjetas(raiz, 'spt-' + vista);
+  if (!['calendario', 'pizarra', 'carpeta'].includes(vista)) UI.plegarTarjetas(raiz, 'spt-' + vista);
 }
 
 let oyentesGlobales = false;

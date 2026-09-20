@@ -16,32 +16,11 @@
  *
  * No usa librerías: el token se firma con el crypto que trae Node.
  */
-const crypto = require('crypto');
+const auth = require('./google-auth');
 
 const API = 'https://www.googleapis.com/drive/v3/files';
-const ALCANCE = 'https://www.googleapis.com/auth/drive';
 
-/* ---------------------------- credenciales ---------------------------- */
-function credenciales() {
-  const crudo = process.env.GOOGLE_SERVICE_ACCOUNT;
-  if (crudo) {
-    try {
-      const j = JSON.parse(crudo);
-      if (j.client_email && j.private_key) {
-        return { correo: j.client_email, clave: j.private_key };
-      }
-    } catch {
-      throw new Error('GOOGLE_SERVICE_ACCOUNT no es un JSON válido. ' +
-        'Pega el archivo completo de la cuenta de servicio, tal cual.');
-    }
-  }
-  const correo = process.env.GOOGLE_CLIENT_EMAIL;
-  const clave = process.env.GOOGLE_PRIVATE_KEY;
-  if (correo && clave) return { correo, clave };
-  return null;
-}
-
-const configurado = () => Boolean(credenciales());
+const configurado = auth.configurado;
 const carpetaRaiz = () => idDeCarpeta(process.env.DRIVE_CARPETA_RAIZ || '');
 
 /* Acepta el id pelado o la dirección completa que se copia del navegador. */
@@ -53,61 +32,17 @@ function idDeCarpeta(texto) {
   return /^[\w-]{10,}$/.test(t) ? t : '';
 }
 
-/* ------------------------------- token -------------------------------- */
-let cache = { token: null, vence: 0 };
-
-async function token() {
-  if (cache.token && Date.now() < cache.vence - 60000) return cache.token;
-
-  const cred = credenciales();
-  if (!cred) throw new Error('Falta la cuenta de servicio de Google en los Secrets.');
-
-  const b64 = o => Buffer.from(JSON.stringify(o)).toString('base64url');
-  const ahora = Math.floor(Date.now() / 1000);
-  const cabeza = b64({ alg: 'RS256', typ: 'JWT' });
-  const cuerpo = b64({
-    iss: cred.correo, scope: ALCANCE,
-    aud: 'https://oauth2.googleapis.com/token',
-    iat: ahora, exp: ahora + 3600
-  });
-  /* En los Secrets los saltos de línea suelen quedar escapados. */
-  const clavePem = cred.clave.replace(/\\n/g, '\n');
-  const firma = crypto.createSign('RSA-SHA256')
-    .update(`${cabeza}.${cuerpo}`).sign(clavePem, 'base64url');
-
-  const r = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: `${cabeza}.${cuerpo}.${firma}`
-    })
-  });
-  const j = await r.json();
-  if (!r.ok) {
-    throw new Error('Google rechazó la cuenta de servicio: ' +
-      (j.error_description || j.error || r.status));
-  }
-  cache = { token: j.access_token, vence: Date.now() + j.expires_in * 1000 };
-  return cache.token;
-}
-
-async function pedir(url, opciones = {}) {
-  const t = await token();
-  const r = await fetch(url, {
-    ...opciones,
-    headers: { authorization: 'Bearer ' + t, ...(opciones.headers || {}) }
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = (j.error && j.error.message) || r.status;
-    if (r.status === 404) {
+/* Los errores de Drive se traducen a algo accionable. */
+async function pedir(url, opciones) {
+  try {
+    return await auth.pedir(url, opciones);
+  } catch (e) {
+    if (e.estado === 404) {
       throw new Error('Drive no encuentra esa carpeta. Lo más probable es que no esté ' +
-        'compartida con la cuenta de servicio: ' + (credenciales() || {}).correo);
+        'compartida con la cuenta de servicio: ' + (e.correoCuenta || ''));
     }
-    throw new Error('Drive respondió: ' + msg);
+    throw new Error('Drive respondió: ' + e.message);
   }
-  return j;
 }
 
 /* ------------------------------ acciones ------------------------------ */
@@ -167,7 +102,7 @@ async function crearCarpeta(nombre, padre) {
 
 /* Para la pantalla: qué está conectado y qué falta. */
 async function estado() {
-  const cred = credenciales();
+  const cred = auth.credenciales();
   if (!cred) {
     return { configurado: false,
       motivo: 'Falta la cuenta de servicio de Google en los Secrets del servidor.' };

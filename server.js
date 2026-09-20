@@ -99,6 +99,32 @@ app.post('/api/drive/carpeta', express.json(), async (req, res) => {
   catch (e) { res.status(502).json({ error: e.message }); }
 });
 
+/* ------------------------------------------------------------------ *
+ * Videollamada de las reuniones
+ *
+ *   /api/reuniones/estado          → si se pueden crear enlaces de Meet
+ *   /api/reuniones/videollamada    → crea el evento con su Meet y devuelve
+ *                                    el enlace para guardarlo en la reunión
+ *
+ * Mientras no estén las credenciales responde 503 y la aplicación ofrece
+ * el camino corto: abrir Google Calendar con la reunión ya escrita.
+ * ------------------------------------------------------------------ */
+const meet = require('./meet');
+
+app.get('/api/reuniones/estado', async (_req, res) => {
+  try { res.json(await meet.estado()); }
+  catch (e) { res.json({ configurado: false, motivo: e.message }); }
+});
+
+app.post('/api/reuniones/videollamada', express.json(), async (req, res) => {
+  const r = req.body || {};
+  if (!meet.configurado() && !r.calendario) {
+    return res.status(503).json({ error: 'Google Calendar no está conectado en el servidor.' });
+  }
+  try { res.json(await meet.crearMeet(r, { calendario: r.calendario })); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get('/programa', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/spt', (_req, res) => res.sendFile(path.join(__dirname, 'spt.html')));
 
