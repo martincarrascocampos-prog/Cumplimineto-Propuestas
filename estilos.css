@@ -979,3 +979,26 @@ nav.tabs{
   .doc-legal p{break-inside:avoid}
   .doc-legal .legal-capitulo{break-after:avoid}
 }
+
+/* --- contenido en vivo de una carpeta de Drive ------------------------ */
+.drive{margin-top:12px; border:1px solid var(--border); border-radius:10px;
+  background:var(--surface); overflow:hidden}
+.drive-cab{display:flex; align-items:center; gap:8px; padding:7px 10px;
+  background:var(--crema); border-bottom:1px solid var(--border)}
+.drive-cab b{flex:1; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--ink-2)}
+.drive-lista{display:flex; flex-direction:column; max-height:260px; overflow-y:auto}
+.drive-lista .mini{padding:10px}
+.drive-fila{display:flex; align-items:center; gap:9px; padding:6px 10px; text-decoration:none;
+  color:var(--ink-2); border-bottom:1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  transition:background .14s var(--curva)}
+.drive-fila:last-child{border-bottom:none}
+.drive-fila:hover{background:var(--crema); color:var(--ink)}
+.drive-fila svg{flex:none; opacity:.6}
+.d-nombre{flex:1; min-width:0; font-size:12.8px; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap}
+.d-tipo{font-size:10.5px; color:var(--ink-muted); text-transform:uppercase;
+  letter-spacing:.04em; flex:none}
+.d-fecha{font-size:11px; color:var(--ink-muted); flex:none; width:54px; text-align:right;
+  font-variant-numeric:tabular-nums}
+@media (max-width:640px){ .d-tipo{display:none} }

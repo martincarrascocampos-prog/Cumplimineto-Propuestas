@@ -707,12 +707,39 @@ function tarjetaProyecto(it) {
       ].filter(Boolean)));
     });
     const opciones = ['Carpeta de Drive', 'Cronograma', 'Documento de trabajo', 'Acta'];
-    cajaEnlaces.appendChild(el('div', { style: 'display:flex; gap:6px; margin-top:8px; flex-wrap:wrap' },
+    const botonera = el('div', { style: 'display:flex; gap:6px; margin-top:8px; flex-wrap:wrap' },
       opciones.map(o => el('button', { class: 'btn btn-sm', type: 'button', text: '+ ' + o,
         onclick: () => {
           Datos.guardar('enlaces', { id: uid(), proyecto: pr.id, nombre: o, url: '' });
           pintarEnlaces();
-        } }))));
+        } })));
+
+    /* Si Drive está conectado, la carpeta del proyecto se crea desde acá:
+       queda dentro de la carpeta madre y con el enlace ya guardado. */
+    const carpeta = propios.find(g => Drive.idDe(g.url));
+    if (!carpeta) {
+      const crear = el('button', { class: 'btn btn-sm', type: 'button',
+        text: '+ Crear carpeta en Drive', hidden: true });
+      crear.addEventListener('click', async () => {
+        crear.disabled = true; crear.textContent = 'Creando…';
+        try {
+          const c = await Drive.crearCarpeta(pr.nombre);
+          Datos.guardar('enlaces', { id: uid(), proyecto: pr.id,
+            nombre: 'Carpeta de Drive', url: c.url });
+          UI.aviso('Carpeta creada en Drive');
+          pintarEnlaces();
+        } catch (e) {
+          UI.aviso(e.message);
+          crear.disabled = false; crear.textContent = '+ Crear carpeta en Drive';
+        }
+      });
+      Drive.preguntar().then(es => { if (es.configurado) crear.hidden = false; });
+      botonera.appendChild(crear);
+    }
+    cajaEnlaces.appendChild(botonera);
+
+    /* El contenido de la carpeta, tal como está en Drive ahora mismo. */
+    if (carpeta) cajaEnlaces.appendChild(cajaDrive(carpeta.url));
   };
   pintarEnlaces();
   card.appendChild(cajaEnlaces);
@@ -763,6 +790,61 @@ const DIAS = [
 /* 1 = lunes … 7 = domingo */
 const diaSemana = fechaISO => (((new Date(fechaISO.slice(0, 10) + 'T12:00').getDay()) + 6) % 7) + 1;
 const tramosDe = (persona, dia) => ((persona && persona.disponibilidad) || {})[dia] || [];
+/* ------------------------------------------------------------------ *
+ * Google Drive en vivo
+ *
+ * El servidor es el que habla con Drive; acá sólo se pregunta. Si no está
+ * conectado —o si el archivo se abrió con doble clic, sin servidor— todo
+ * sigue funcionando con los enlaces pegados a mano.
+ * ------------------------------------------------------------------ */
+const Drive = {
+  estado: null,            /* null = todavía no se preguntó */
+  cache: new Map(),        /* carpeta → { cuando, archivos } */
+  VIDA: 30000,             /* medio minuto: "en vivo" sin machacar a Google */
+
+  idDe(texto) {
+    const t = String(texto || '').trim();
+    const m = t.match(/\/folders\/([\w-]+)/) || t.match(/[?&]id=([\w-]+)/);
+    if (m) return m[1];
+    return /^[\w-]{10,}$/.test(t) ? t : '';
+  },
+
+  async preguntar() {
+    if (this.estado) return this.estado;
+    try {
+      const r = await fetch('/api/drive/estado');
+      if (!r.ok) throw new Error('sin servidor');
+      this.estado = await r.json();
+    } catch {
+      this.estado = { configurado: false, sinServidor: true,
+        motivo: 'Esta copia se abrió sin servidor, así que no puede hablar con Drive.' };
+    }
+    return this.estado;
+  },
+
+  async listar(carpeta, refrescar) {
+    const id = this.idDe(carpeta);
+    if (!id) throw new Error('Ese enlace no parece una carpeta de Drive.');
+    const guardado = this.cache.get(id);
+    if (!refrescar && guardado && Date.now() - guardado.cuando < this.VIDA) return guardado.archivos;
+    const r = await fetch('/api/drive/listar?carpeta=' + encodeURIComponent(id));
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Drive no respondió.');
+    this.cache.set(id, { cuando: Date.now(), archivos: j.archivos || [] });
+    return j.archivos || [];
+  },
+
+  async crearCarpeta(nombre) {
+    const r = await fetch('/api/drive/carpeta', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nombre })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo crear la carpeta.');
+    return j;
+  }
+};
+
 const personaPorNombre = n => integrantes().find(i => i.nombre === n) || null;
 const nombresDe = txt => String(txt || '').split(',').map(x => x.trim()).filter(Boolean);
 
@@ -835,6 +917,55 @@ function cajaAvisos(avisos) {
     el('b', { text: '⚠ ' + (avisos.length === 1 ? 'Un problema de horario' : `${avisos.length} problemas de horario`) }),
     el('ul', {}, avisos.map(a => el('li', { text: a })))
   ]);
+}
+
+/* Lo que hay dentro de una carpeta de Drive, pedido al servidor cada vez
+   que se abre el proyecto. Si Drive no está conectado no estorba: se queda
+   callada y el enlace de siempre sigue ahí. */
+function cajaDrive(url) {
+  const caja = el('div', { class: 'drive', hidden: true });
+  const lista = el('div', { class: 'drive-lista' });
+  const titulo = el('div', { class: 'drive-cab' }, [
+    el('b', { text: 'En la carpeta' }),
+    el('button', { class: 'btn btn-sm', type: 'button', text: 'Actualizar',
+      onclick: () => cargar(true) }),
+    el('a', { class: 'btn btn-sm', href: url, target: '_blank', rel: 'noopener',
+      text: 'Abrir en Drive' })
+  ]);
+
+  const cargar = async refrescar => {
+    lista.innerHTML = '';
+    lista.appendChild(el('div', { class: 'mini', text: 'Leyendo Drive…' }));
+    try {
+      const archivos = await Drive.listar(url, refrescar);
+      lista.innerHTML = '';
+      if (!archivos.length) {
+        lista.appendChild(el('div', { class: 'mini', text: 'La carpeta está vacía.' }));
+        return;
+      }
+      archivos.forEach(a => lista.appendChild(el('a', {
+        class: 'drive-fila', href: a.url, target: '_blank', rel: 'noopener',
+        title: a.quien ? 'Último cambio: ' + a.quien : ''
+      }, [
+        UI.icono(a.esCarpeta ? 'proyecto' : 'documentos', 16),
+        el('span', { class: 'd-nombre', text: a.nombre }),
+        el('span', { class: 'd-tipo', text: a.tipo }),
+        el('span', { class: 'd-fecha', text: fechaCorta(a.modificado) })
+      ])));
+    } catch (e) {
+      lista.innerHTML = '';
+      lista.appendChild(el('div', { class: 'mini', text: e.message }));
+    }
+  };
+
+  Drive.preguntar().then(es => {
+    if (!es.configurado) return;      /* sin Drive conectado, ni aparece */
+    caja.hidden = false;
+    cargar(false);
+  });
+  caja.appendChild(titulo);
+  caja.appendChild(lista);
+  return caja;
 }
 
 /* ------------------------------------------------------------------ *

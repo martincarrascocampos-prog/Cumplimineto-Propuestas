@@ -109,3 +109,89 @@ Si en el paso 2.2 o 2.3 la cuenta universitaria no te deja:
 2. Sigue igual desde ahí: la cuenta de servicio no necesita pertenecer a la universidad.
 3. El calendario del paso 2.1 sí puede vivir en la cuenta de la FECh o en la tuya; solo hay que
    compartirlo con el `client_email`.
+
+---
+
+## Google Drive: la carpeta de la Secretaría, en vivo
+
+La idea es que cada proyecto del SPT muestre **lo que hay ahora mismo** en su
+carpeta de Drive, sin que nadie tenga que pegar enlaces uno por uno.
+
+Funciona igual que el calendario: se comparte una carpeta con la **cuenta de
+servicio** y el servidor la lee. Nadie del equipo inicia sesión; todos ven lo
+mismo. La cuenta de servicio **sólo ve lo que se le comparta**, así que esto no
+abre nada por accidente.
+
+### 1. Crear la carpeta madre
+
+En Drive, crea una carpeta —por ejemplo **Secretaría de Participación 2026**—
+donde vivirá todo. Dentro irán las carpetas de cada proyecto.
+
+### 2. Compartirla con la cuenta de servicio
+
+1. Clic derecho sobre la carpeta → **Compartir**.
+2. Pega el correo de la cuenta de servicio, que termina en
+   `...iam.gserviceaccount.com` (es el `client_email` del JSON).
+3. Dale permiso de **Editor** — hace falta para que el sistema pueda crear las
+   carpetas de los proyectos. Si sólo quieres que lea, **Lector** basta, pero
+   entonces las carpetas las creas tú a mano.
+4. **Desmarca "Notificar a las personas"**: no es una persona, y el correo rebota.
+
+> Si tu cuenta es la de la universidad y Google no te deja compartir hacia
+> afuera, es la política de Workspace de la U. La salida es la misma que para el
+> calendario: usar una cuenta Gmail común como dueña de la carpeta, o pedirle a
+> la DTI que autorice el dominio de la cuenta de servicio.
+
+### 3. Copiar el id de la carpeta
+
+Abre la carpeta y mira la dirección:
+
+```
+https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+                                       └──────── esto es el id ────────┘
+```
+
+### 4. Pegarlo en los Secrets de Replit
+
+| Secret | Valor |
+|---|---|
+| `GOOGLE_SERVICE_ACCOUNT` | el JSON completo de la cuenta de servicio, tal cual |
+| `DRIVE_CARPETA_RAIZ` | el id de la carpeta madre |
+
+`GOOGLE_SERVICE_ACCOUNT` es el mismo Secret que usa el calendario: se carga una
+sola vez y sirve para los dos.
+
+**Nunca** subas ese JSON al repositorio ni lo mandes por chat: es una llave
+privada. Si alguna vez se filtra, se borra la clave desde Google Cloud →
+*IAM y administración* → *Cuentas de servicio* → *Claves*, y se crea otra.
+
+### 5. Comprobar
+
+Con la aplicación publicada, abre en el navegador:
+
+```
+https://tu-app.replit.app/api/drive/estado
+```
+
+- `{"configurado":true, ...}` con el número de elementos → quedó.
+- `{"configurado":false,"motivo":"..."}` → el motivo dice exactamente qué falta.
+
+### Qué gana el equipo
+
+En **Proyectos**, al abrir un proyecto:
+
+- Si no tiene carpeta, aparece **"+ Crear carpeta en Drive"**: la crea dentro de
+  la carpeta madre, con el nombre del proyecto, y guarda el enlace solo.
+- Si ya tiene, aparece **"En la carpeta"** con sus archivos: nombre, tipo y
+  cuándo se tocó por última vez. Cada uno abre en Drive con un clic, y el botón
+  **Actualizar** vuelve a preguntar.
+
+El listado se guarda medio minuto para no llamar a Google en cada clic; con
+*Actualizar* se pide de nuevo al tiro.
+
+### Si no se configura
+
+No pasa nada: los enlaces pegados a mano (*Carpeta de Drive*, *Cronograma*,
+*Documento de trabajo*, *Acta*) siguen funcionando igual, y el bloque de Drive
+sencillamente no aparece. En la versión de un solo archivo, que se abre con
+doble clic y no tiene servidor, tampoco aparece.

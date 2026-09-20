@@ -69,6 +69,36 @@ app.post('/api/correos/enviar', async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ *
+ * Google Drive
+ *
+ *   /api/drive/estado                 → si está conectado y a qué carpeta
+ *   /api/drive/listar?carpeta=<id>    → lo que hay ahora en esa carpeta
+ *   /api/drive/carpeta                → crea la carpeta de un proyecto
+ *
+ * La cuenta de servicio sólo ve lo que se le comparte, así que esto no
+ * abre nada que no se haya compartido a propósito. El paso a paso está
+ * en GOOGLE.md.
+ * ------------------------------------------------------------------ */
+const drive = require('./drive');
+
+app.get('/api/drive/estado', async (_req, res) => {
+  try { res.json(await drive.estado()); }
+  catch (e) { res.json({ configurado: false, motivo: e.message }); }
+});
+
+app.get('/api/drive/listar', async (req, res) => {
+  if (!drive.configurado()) return res.status(503).json({ error: 'Drive no está conectado.' });
+  try { res.json({ archivos: await drive.listar(req.query.carpeta) }); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
+app.post('/api/drive/carpeta', express.json(), async (req, res) => {
+  if (!drive.configurado()) return res.status(503).json({ error: 'Drive no está conectado.' });
+  try { res.json(await drive.crearCarpeta(req.body && req.body.nombre, req.body && req.body.padre)); }
+  catch (e) { res.status(502).json({ error: e.message }); }
+});
+
 app.get('/programa', (_req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/spt', (_req, res) => res.sendFile(path.join(__dirname, 'spt.html')));
 
