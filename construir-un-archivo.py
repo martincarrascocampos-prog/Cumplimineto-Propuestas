@@ -3,7 +3,8 @@
 
     python3 construir-un-archivo.py
 
-Toma las dos páginas, sus estilos, su código y el PDF del programa, y escribe
+Toma las dos páginas, sus estilos, su código y los dos PDF —el programa y
+los estatutos de la FECh— y escribe
 Conectometro-FECh-2026.html: un archivo que se abre con doble clic, sin carpeta
 ni servidor. Las dos secciones conviven en la misma página y comparten datos.
 """
@@ -48,13 +49,27 @@ css = leer('estilos.css') + """
 @media (max-width:640px){ .barra-perfil{padding:10px 12px 0} }
 """
 
-pdf = base64.b64encode(open(os.path.join(RAIZ, 'programa/programa-conectemos-la-chile.pdf'), 'rb').read()).decode()
-minis = [base64.b64encode(open(f, 'rb').read()).decode()
-         for f in sorted(glob.glob(os.path.join(RAIZ, 'programa/paginas/p*.webp')))]
-if len(minis) != 57:
-    sys.exit(f'Esperaba 57 miniaturas y encontré {len(minis)}')
+# Los dos documentos van incrustados: el archivo tiene que servir sin carpeta.
+DOCS = {
+    'programa':  ('programa/programa-conectemos-la-chile.pdf', 'programa/paginas', 57),
+    'estatutos': ('estatutos/estatutos-fech.pdf', 'estatutos/paginas', 47),
+}
+pdfs, minis = {}, {}
+for clave, (archivo, carpeta, esperadas) in DOCS.items():
+    pdfs[clave] = base64.b64encode(open(os.path.join(RAIZ, archivo), 'rb').read()).decode()
+    paginas = sorted(glob.glob(os.path.join(RAIZ, carpeta, 'p*.webp')))
+    if len(paginas) != esperadas:
+        sys.exit(f'{clave}: esperaba {esperadas} miniaturas y encontré {len(paginas)}')
+    minis[clave] = [base64.b64encode(open(f, 'rb').read()).decode() for f in paginas]
 
-codigo = [leer(n) for n in ('core.js', 'data.js', 'spt-data.js', 'app.js', 'spt.js')]
+def en_js(mapa):
+    return '{' + ','.join('%s:"%s"' % (k, v) for k, v in mapa.items()) + '}'
+
+def en_js_listas(mapa):
+    return '{' + ','.join('%s:["%s"]' % (k, '","'.join(v)) for k, v in mapa.items()) + '}'
+
+codigo = [leer(n) for n in
+          ('core.js', 'data.js', 'estatutos-data.js', 'spt-data.js', 'app.js', 'spt.js')]
 for c in codigo:
     if '</script>' in c:
         sys.exit('Hay un </script> dentro del código: rompería el archivo')
@@ -82,7 +97,7 @@ html = f"""<!DOCTYPE html>
   </div>
   <div class="top-actions">
     <div class="secciones" role="group" aria-label="Secciones del sistema">
-      <button type="button" data-seccion="conecto" aria-pressed="true">Programa</button>
+      <button type="button" data-seccion="conecto" aria-pressed="true">Conectómetro</button>
       <button type="button" data-seccion="spt" aria-pressed="false">SPT · Participación</button>
     </div>
     <span class="conexion" id="conexion" title="Dónde se están guardando los datos"><i></i><span>…</span></span>
@@ -107,8 +122,8 @@ html = f"""<!DOCTYPE html>
 <script>
 window.UNARCHIVO = true;
 window.SECCION = 'conecto';
-window.PDF_INLINE = "{pdf}";
-window.MINIS_INLINE = ["{'","'.join(minis)}"];
+window.PDF_INLINE = {en_js(pdfs)};
+window.MINIS_INLINE = {en_js_listas(minis)};
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -125,6 +140,9 @@ window.MINIS_INLINE = ["{'","'.join(minis)}"];
 </script>
 <script>
 {codigo[4]}
+</script>
+<script>
+{codigo[5]}
 </script>
 <script>
 /* Cambio entre las dos secciones: se vacía el lienzo, se clona la plantilla
@@ -166,6 +184,10 @@ window.MINIS_INLINE = ["{'","'.join(minis)}"];
   }}
 
   botones.forEach(b => b.addEventListener('click', () => mostrar(b.dataset.seccion)));
+
+  /* Las dos secciones se llaman entre ellas: la ficha de una propuesta
+     asignada a Participación ofrece saltar a su proyecto en el SPT. */
+  window.irASeccion = mostrar;
 
 
   mostrar('conecto');

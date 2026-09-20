@@ -18,7 +18,7 @@ let mes = new Date();
 let diaElegido = null;
 let personaHorario = null;
 let capasOcultas = new Set();
-let verCalendarios = false;
+let calVista = 'semana';        /* mes · semana · día · agenda */
 
 /* ------------------------------------------------------------------ *
  * 1. Los datos del SPT
@@ -426,8 +426,23 @@ function vistaProyectos(raiz) {
   raiz.appendChild(card);
 
   if (!lista.length) {
-    raiz.appendChild(el('div', { class: 'card compacta' },
-      el('div', { class: 'empty', text: 'Ningún proyecto coincide con el filtro.' })));
+    const hayFiltro = filtros.texto || filtros.urgencia || filtros.origen ||
+                      filtros.persona || filtros.estado !== 'Activo';
+    raiz.appendChild(el('div', { class: 'card compacta' }, hayFiltro
+      ? el('div', { class: 'empty', text: 'Ningún proyecto coincide con el filtro.' })
+      : el('div', { class: 'note' }, [
+          el('b', { text: 'Todavía no hay nada designado a Participación.' }),
+          el('p', { text: 'Las propuestas del programa llegan solas a este SPT cuando alguien ' +
+            'se las asigna a la Secretaría de Participación. Eso se hace en el Conectómetro, ' +
+            'en la pestaña Propuestas: se abre la propuesta y se elige "Secretaría de ' +
+            'Participación" en Equipo responsable. En cuanto queda asignada aparece acá, en ' +
+            'el grupo "Del programa".' }),
+          el('p', { text: 'Lo que no venga del programa se crea con el botón "+ Proyecto propio".' }),
+          el('a', { class: 'btn btn-sm btn-primary',
+            href: window.UNARCHIVO ? '#' : 'index.html',
+            onclick: window.UNARCHIVO ? (e => { e.preventDefault(); window.irASeccion('conecto'); }) : null,
+            text: 'Ir al Conectómetro →' })
+        ])));
     return;
   }
 
@@ -436,6 +451,13 @@ function vistaProyectos(raiz) {
   const reasignados = lista.filter(it => it.origen === 'Reasignado');
   if (delPrograma.length) {
     raiz.appendChild(seccion(`Del programa · ${delPrograma.length}`));
+    raiz.appendChild(el('div', { class: 'enlace-spt part', style: 'margin-bottom:10px' }, [
+      el('b', { text: 'Estos vienen del Conectómetro.' }),
+      document.createTextNode(' Son las propuestas del programa asignadas a la Secretaría de ' +
+        'Participación. Los pasos que pongas acá son las etapas de esa propuesta: al marcar ' +
+        'uno como completado, el cumplimiento sube en el Conectómetro. Y si el equipo ' +
+        'responsable cambia allá, el proyecto sale de esta lista.')
+    ]));
     delPrograma.forEach(it => raiz.appendChild(tarjetaProyecto(it)));
   }
   if (propios.length) {
@@ -697,8 +719,10 @@ function tarjetaProyecto(it) {
 
   /* --- pie --- */
   const pie = el('div', { class: 'toolbar', style: 'margin:14px 0 0' });
-  if (it.codigo) pie.appendChild(el('a', { class: 'btn btn-sm', href: `index.html#${it.codigo}`,
-    text: `Ver ${it.codigo} en el programa` }));
+  if (it.codigo) pie.appendChild(el('a', { class: 'btn btn-sm',
+    href: window.UNARCHIVO ? '#' : `index.html#${it.codigo}`,
+    onclick: window.UNARCHIVO ? (e => { e.preventDefault(); window.irASeccion('conecto'); }) : null,
+    text: `Ver ${it.codigo} en el Conectómetro` }));
   pie.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: 'Agendar reunión',
     onclick: () => {
       Datos.guardar('agenda', { id: uid(), tema: 'Reunión — ' + pr.nombre, inicio: '', duracion: 60,
@@ -814,261 +838,625 @@ function cajaAvisos(avisos) {
 }
 
 /* ------------------------------------------------------------------ *
- * 7. Vista: Calendario
+ * 7. Calendario
+ *
+ * Al modo de Google Calendar: cuatro vistas (mes, semana, día y agenda),
+ * un riel a la izquierda con el mini-mes y la lista de calendarios que se
+ * prenden y apagan, y creación de eventos haciendo clic en la franja de
+ * hora que corresponde. Cada calendario puede apuntar a uno de Google.
+ *
+ * Tres cosas caen en el calendario y sólo una se edita:
+ *   · reuniones  — filas de la tabla agenda, con hora y duración
+ *   · hitos      — fechas comprometidas de un proyecto (día completo)
+ *   · plazos     — vencimiento de un paso (día completo)
  * ------------------------------------------------------------------ */
-function eventosDelMes(inicioMes, finMes) {
-  const dentro = f => f && f.slice(0, 10) >= inicioMes && f.slice(0, 10) <= finMes;
+
+const HORA_DESDE = 7;          /* primera franja visible */
+const HORA_HASTA = 23;         /* última franja visible */
+const ALTO_HORA = 46;          /* píxeles por hora en semana y día */
+
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-` +
+                 `${String(d.getDate()).padStart(2, '0')}`;
+const sumarDias = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const lunesDe = d => sumarDias(d, -((d.getDay() + 6) % 7));
+const desdeIso = s => new Date(s.length <= 10 ? s + 'T12:00' : s);
+const minutosDe = s => {
+  if (!s || s.length <= 10) return null;
+  const [h, m] = s.slice(11, 16).split(':').map(Number);
+  return h * 60 + (m || 0);
+};
+const mesLargo = d => {
+  const n = d.toLocaleDateString('es-CL', { month: 'long' });
+  return n.charAt(0).toUpperCase() + n.slice(1) + ' ' + d.getFullYear();
+};
+
+/* Todo lo que cae en un rango de fechas, ya filtrado por capas y por persona. */
+function eventosEntre(desde, hasta) {
+  const dentro = f => f && f.slice(0, 10) >= desde && f.slice(0, 10) <= hasta;
   const mios = n => !filtros.persona || (n || []).includes(filtros.persona);
   const lista = [];
 
   Datos.todo('agenda').forEach(ev => {
     if (!dentro(ev.inicio)) return;
-    const cal = calendarioDe(ev.calendario);
     if (capasOcultas.has(ev.calendario || 'sin-calendario')) return;
-    const invitados = String(ev.invitados || '').split(',').map(s => s.trim()).filter(Boolean);
+    const invitados = nombresDe(ev.invitados);
     if (!mios(invitados)) return;
+    const cal = calendarioDe(ev.calendario);
     lista.push({ tipo: 'reunion', fecha: ev.inicio.slice(0, 10), hora: horaDe(ev.inicio),
-      titulo: ev.tema, gente: invitados, ref: ev,
-      color: colorCalendario(cal), calendario: cal ? cal.nombre : 'sin calendario' });
+      minuto: minutosDe(ev.inicio), duracion: Number(ev.duracion) || 60,
+      titulo: ev.tema || 'Reunión', gente: invitados, ref: ev,
+      color: colorCalendario(cal), calendario: cal ? cal.nombre : 'Sin calendario' });
   });
 
   items().forEach(it => {
     if (!capasOcultas.has('hitos')) hitosDe(it).forEach(h => {
       if (!dentro(h.fecha)) return;
       if (!mios(designados(it))) return;
-      lista.push({ tipo: 'hito', fecha: h.fecha.slice(0, 10), hora: horaDe(h.fecha),
-        titulo: h.detalle, contexto: it.nombre, gente: designados(it) });
+      lista.push({ tipo: 'hito', fecha: h.fecha.slice(0, 10), minuto: null,
+        titulo: h.detalle || 'Hito', contexto: it.nombre, gente: designados(it),
+        color: 'var(--warning)' });
     });
     if (!capasOcultas.has('plazos')) pasosDe(it).forEach(p => {
       if (!dentro(p.plazo)) return;
       if (!mios(p.encargados || [])) return;
-      lista.push({ tipo: p.estado === 'Pendiente' && p.plazo < hoy() ? 'vencido' : 'paso',
-        fecha: p.plazo.slice(0, 10), hora: '', titulo: p.descripcion, contexto: it.nombre,
-        gente: p.encargados || [], hecho: p.estado === 'Completado' });
+      const vencido = p.estado === 'Pendiente' && p.plazo < hoy();
+      lista.push({ tipo: vencido ? 'vencido' : 'paso', fecha: p.plazo.slice(0, 10), minuto: null,
+        titulo: p.descripcion || 'Paso', contexto: it.nombre, gente: p.encargados || [],
+        hecho: p.estado === 'Completado',
+        color: vencido ? 'var(--critical)' : 'var(--ramp-3)' });
     });
   });
-  return lista.sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+
+  return lista.sort((a, b) =>
+    (a.fecha + String(a.minuto ?? -1).padStart(4, '0')).localeCompare(
+     b.fecha + String(b.minuto ?? -1).padStart(4, '0')));
 }
 
-function vistaCalendario(raiz) {
-  const y = mes.getFullYear(), m = mes.getMonth();
-  const primero = new Date(y, m, 1);
-  const ultimo = new Date(y, m + 1, 0);
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const eventos = eventosDelMes(iso(primero), iso(ultimo));
-  const porDia = eventos.reduce((a, e) => ((a[e.fecha] = a[e.fecha] || []).push(e), a), {});
+/* Reparte en columnas los eventos que se pisan, como hace Google. */
+function repartirColumnas(evs) {
+  const conHora = evs.filter(e => e.minuto !== null)
+    .sort((a, b) => a.minuto - b.minuto || b.duracion - a.duracion);
+  let grupo = [], finGrupo = -1;
+  const cerrar = () => {
+    const cols = [];
+    grupo.forEach(e => {
+      let c = cols.findIndex(col => col[col.length - 1].minuto + col[col.length - 1].duracion <= e.minuto);
+      if (c === -1) { cols.push([e]); c = cols.length - 1; } else cols[c].push(e);
+      e._col = c;
+    });
+    grupo.forEach(e => { e._cols = cols.length; });
+    grupo = [];
+  };
+  conHora.forEach(e => {
+    if (grupo.length && e.minuto >= finGrupo) { cerrar(); finGrupo = -1; }
+    grupo.push(e);
+    finGrupo = Math.max(finGrupo, e.minuto + e.duracion);
+  });
+  if (grupo.length) cerrar();
+  return conHora;
+}
 
-  const barra = el('div', { class: 'cal-barra' }, [
-    el('button', { class: 'btn btn-sm', type: 'button', text: '‹', 'aria-label': 'Mes anterior',
-      onclick: () => { mes = new Date(y, m - 1, 1); render(); } }),
-    el('span', { class: 'cal-mes', text: (() => {
-      const n = primero.toLocaleDateString('es-CL', { month: 'long' });
-      return n.charAt(0).toUpperCase() + n.slice(1) + ' ' + primero.getFullYear();
-    })() }),
-    el('button', { class: 'btn btn-sm', type: 'button', text: '›', 'aria-label': 'Mes siguiente',
-      onclick: () => { mes = new Date(y, m + 1, 1); render(); } }),
-    el('button', { class: 'btn btn-sm', type: 'button', text: 'Hoy',
-      onclick: () => { mes = new Date(); diaElegido = hoy(); render(); } }),
-    el('span', { class: 'count', text: filtros.persona ? `Calendario de ${filtros.persona}` : 'Calendario del equipo' })
+/* ---------------------------- el riel ----------------------------- */
+function rielCalendario(anclaMes, recargar) {
+  const riel = el('aside', { class: 'riel' });
+
+  riel.appendChild(el('button', { class: 'btn btn-primary btn-crear', type: 'button',
+    text: '+ Crear evento',
+    onclick: () => abrirEditorEvento(null, diaElegido || hoy(), '18:00', recargar) }));
+
+  /* Mini-mes: mover el mes grande sin salir de la vista. */
+  const mini = el('div', { class: 'card mini-caja' });
+  const cab = el('div', { class: 'mini-cab' }, [
+    el('b', { text: mesLargo(anclaMes) }),
+    el('span', {}, [
+      el('button', { class: 'ico', type: 'button', text: '‹', 'aria-label': 'Mes anterior',
+        onclick: () => { mes = new Date(anclaMes.getFullYear(), anclaMes.getMonth() - 1, 1); render(); } }),
+      el('button', { class: 'ico', type: 'button', text: '›', 'aria-label': 'Mes siguiente',
+        onclick: () => { mes = new Date(anclaMes.getFullYear(), anclaMes.getMonth() + 1, 1); render(); } })
+    ])
   ]);
+  const rej = el('div', { class: 'mini-rejilla' });
+  ['L', 'M', 'M', 'J', 'V', 'S', 'D'].forEach(d => rej.appendChild(el('span', { class: 'mini-dow', text: d })));
+  const primero = new Date(anclaMes.getFullYear(), anclaMes.getMonth(), 1);
+  const arranque = lunesDe(primero);
+  const conAlgo = new Set(eventosEntre(iso(arranque), iso(sumarDias(arranque, 41))).map(e => e.fecha));
+  for (let i = 0; i < 42; i++) {
+    const d = sumarDias(arranque, i);
+    const clave = iso(d);
+    rej.appendChild(el('button', {
+      class: 'mini-dia' + (d.getMonth() === anclaMes.getMonth() ? '' : ' fuera') +
+             (clave === hoy() ? ' hoy' : '') + (clave === diaElegido ? ' elegido' : '') +
+             (conAlgo.has(clave) ? ' con' : ''),
+      type: 'button', text: String(d.getDate()),
+      onclick: () => { diaElegido = clave; mes = new Date(d.getFullYear(), d.getMonth(), 1); render(); }
+    }));
+  }
+  mini.appendChild(cab); mini.appendChild(rej);
+  riel.appendChild(mini);
 
-  /* Capas: cada calendario y las dos capas automáticas se prenden y apagan. */
+  /* Mis calendarios: se prenden y apagan, y se editan acá mismo. */
   asegurarCalendario();
-  const capas = el('div', { class: 'capas' });
+  const caja = el('div', { class: 'card' }, el('h3', { text: 'Mis calendarios' }));
   const alternar = clave => {
     capasOcultas.has(clave) ? capasOcultas.delete(clave) : capasOcultas.add(clave);
     render();
   };
-  calendarios().forEach(c => capas.appendChild(el('button', {
-    class: 'capa' + (capasOcultas.has(c.id) ? ' apagada' : ''), type: 'button',
-    onclick: () => alternar(c.id) }, [
-    el('i', { style: `background:${colorCalendario(c)}` }), document.createTextNode(c.nombre)
-  ])));
-  [['hitos', 'Hitos', 'var(--warning)'], ['plazos', 'Plazos de pasos', 'var(--ramp-3)']]
-    .forEach(([clave, texto, color]) => capas.appendChild(el('button', {
-      class: 'capa' + (capasOcultas.has(clave) ? ' apagada' : ''), type: 'button',
-      onclick: () => alternar(clave) }, [
-      el('i', { style: `background:${color}` }), document.createTextNode(texto)
-    ])));
-  capas.appendChild(el('button', { class: 'btn btn-sm', type: 'button',
-    text: verCalendarios ? 'Cerrar' : 'Calendarios',
-    onclick: () => { verCalendarios = !verCalendarios; render(); } }));
+  calendarios().forEach(c => {
+    const fila = el('div', { class: 'cal-fila' }, [
+      el('button', {
+        class: 'cal-marca' + (capasOcultas.has(c.id) ? ' apagada' : ''), type: 'button',
+        style: `--c:${colorCalendario(c)}`, 'aria-pressed': String(!capasOcultas.has(c.id)),
+        title: capasOcultas.has(c.id) ? 'Mostrar este calendario' : 'Ocultar este calendario',
+        onclick: () => alternar(c.id) }),
+      el('span', { class: 'cal-nombre', text: c.nombre,
+        title: c.gcal_id ? 'Sincroniza con Google: ' + c.gcal_id : 'Sin calendario de Google asociado' }),
+      c.gcal_id ? el('span', { class: 'cal-g', title: 'Conectado con Google Calendar', text: 'G' }) : null,
+      el('button', { class: 'ico', type: 'button', text: '⋯', 'aria-label': 'Opciones del calendario',
+        onclick: () => abrirEditorCalendario(c, recargar) })
+    ].filter(Boolean));
+    caja.appendChild(fila);
+  });
+  caja.appendChild(el('button', { class: 'btn btn-sm', type: 'button', text: '+ Nuevo calendario',
+    style: 'margin-top:8px', onclick: () => abrirEditorCalendario(null, recargar) }));
+  riel.appendChild(caja);
 
+  /* Las dos capas que no son calendarios sino cosas del trabajo. */
+  const otras = el('div', { class: 'card' }, el('h3', { text: 'Del trabajo' }));
+  [['hitos', 'Hitos comprometidos', 'var(--warning)'],
+   ['plazos', 'Plazos de pasos', 'var(--ramp-3)']].forEach(([clave, texto, color]) => {
+    otras.appendChild(el('div', { class: 'cal-fila' }, [
+      el('button', { class: 'cal-marca' + (capasOcultas.has(clave) ? ' apagada' : ''),
+        type: 'button', style: `--c:${color}`, 'aria-pressed': String(!capasOcultas.has(clave)),
+        onclick: () => alternar(clave) }),
+      el('span', { class: 'cal-nombre', text: texto })
+    ]));
+  });
+  riel.appendChild(otras);
+  return riel;
+}
+
+/* --------------------- editores en un globo ----------------------- */
+function globo(titulo, cuerpo, pie) {
+  const fondo = el('div', { class: 'globo-fondo' });
+  const caja = el('div', { class: 'globo', role: 'dialog', 'aria-modal': 'true',
+    'aria-label': titulo });
+  const cerrar = () => { fondo.remove(); caja.remove(); document.removeEventListener('keydown', esc); };
+  const esc = e => { if (e.key === 'Escape') cerrar(); };
+  document.addEventListener('keydown', esc);
+  fondo.addEventListener('click', cerrar);
+  caja.appendChild(el('div', { class: 'globo-cab' }, [
+    el('b', { text: titulo }),
+    el('button', { class: 'ico', type: 'button', text: '✕', 'aria-label': 'Cerrar', onclick: cerrar })
+  ]));
+  caja.appendChild(el('div', { class: 'globo-cuerpo' }, cuerpo));
+  if (pie) caja.appendChild(el('div', { class: 'globo-pie' }, pie));
+  document.body.appendChild(fondo); document.body.appendChild(caja);
+  const primero = caja.querySelector('input,select,textarea,button');
+  if (primero) primero.focus();
+  return cerrar;
+}
+
+/* Crear o editar una reunión. Es el mismo formulario en los dos casos. */
+function abrirEditorEvento(ev, fecha, hora, recargar) {
+  asegurarCalendario();
+  const nuevo = !ev;
+  const base = ev || { id: uid(), tema: '', inicio: `${fecha}T${hora}`, duracion: 60,
+    formato: 'Presencial', lugar: '', invitados: filtros.persona || '',
+    estado: 'Por agendar', proyecto: null, calendario: calendarios()[0].id };
+
+  const inTema = el('input', { type: 'text', value: base.tema || '',
+    placeholder: 'Título del evento' });
+  const inFecha = el('input', { type: 'date', value: (base.inicio || '').slice(0, 10) });
+  const inHora = el('input', { type: 'time', value: (base.inicio || '').slice(11, 16) || '18:00' });
+  const inMin = el('input', { type: 'number', value: base.duracion || 60, min: 15, step: 15 });
+  const inLugar = el('input', { type: 'text', value: base.lugar || '',
+    placeholder: 'Sala, campus o enlace de la videollamada' });
+  const inCal = el('select', {});
+  calendarios().forEach(c => inCal.appendChild(el('option', { value: c.id, text: c.nombre })));
+  inCal.value = base.calendario || calendarios()[0].id;
+  const inFormato = el('select', {});
+  SPT.listas.formato.forEach(f => inFormato.appendChild(el('option', { value: f, text: f })));
+  inFormato.value = base.formato || 'Presencial';
+
+  let elegidos = nombresDe(base.invitados);
+  const cajaGente = el('div', { class: 'meta' });
+  const cajaAviso = el('div', {});
+  const guardar = el('button', { class: 'btn btn-primary', type: 'button',
+    text: nuevo ? 'Guardar evento' : 'Guardar cambios' });
+
+  const leer = () => ({ id: base.id, tema: inTema.value.trim(),
+    inicio: `${inFecha.value}T${inHora.value || '18:00'}`,
+    duracion: Number(inMin.value) || 60, formato: inFormato.value,
+    lugar: inLugar.value.trim(), invitados: elegidos.join(', '),
+    estado: base.estado || 'Por agendar', proyecto: base.proyecto || null,
+    calendario: inCal.value });
+
+  const revisar = () => {
+    const avisos = avisosReunion(leer());
+    cajaAviso.innerHTML = '';
+    const c = cajaAvisos(avisos);
+    if (c) cajaAviso.appendChild(c);
+    guardar.textContent = avisos.length
+      ? (nuevo ? 'Guardar de todos modos' : 'Guardar igual')
+      : (nuevo ? 'Guardar evento' : 'Guardar cambios');
+  };
+  const pintarGente = () => {
+    cajaGente.innerHTML = '';
+    if (!nombres().length) {
+      cajaGente.appendChild(el('span', { class: 'mini',
+        text: 'Carga al equipo en la pestaña Equipo para avisar de los choques de horario.' }));
+      return;
+    }
+    nombres().forEach(n => {
+      const dentro = elegidos.includes(n);
+      cajaGente.appendChild(el('button', {
+        class: 'tag' + (dentro ? ' principal' : ''), type: 'button',
+        title: 'Disponible: ' + resumenHorario(personaPorNombre(n)),
+        text: (dentro ? '✓ ' : '+ ') + n,
+        onclick: () => {
+          elegidos = dentro ? elegidos.filter(x => x !== n) : [...elegidos, n];
+          pintarGente(); revisar();
+        } }));
+    });
+  };
+  pintarGente();
+  [inFecha, inHora, inMin].forEach(i => i.addEventListener('input', revisar));
+  revisar();
+
+  const campo = (etiqueta, nodo) => el('label', { class: 'field' },
+    [el('span', { text: etiqueta }), nodo]);
+
+  const cuerpo = [
+    campo('Título', inTema),
+    el('div', { class: 'campos' }, [
+      campo('Día', inFecha), campo('Hora', inHora), campo('Minutos', inMin)
+    ]),
+    el('div', { class: 'campos' }, [campo('Calendario', inCal), campo('Formato', inFormato)]),
+    campo('Lugar o enlace', inLugar),
+    el('div', {}, [el('span', { class: 'etiqueta', text: 'Invitados' }), cajaGente]),
+    cajaAviso
+  ];
+
+  const pie = [guardar];
+  if (!nuevo) {
+    pie.push(el('a', { class: 'btn', href: enlaceGoogle(base), target: '_blank', rel: 'noopener',
+      text: 'Abrir en Google' }));
+    pie.push(el('button', { class: 'x', type: 'button', text: '✕ eliminar',
+      onclick: () => { cerrar(); UI.borrarConDeshacer('agenda', { ...base }, 'Evento', recargar); } }));
+  }
+
+  const cerrar = globo(nuevo ? 'Nuevo evento' : 'Editar evento', cuerpo, pie);
+  guardar.addEventListener('click', () => {
+    if (!inTema.value.trim()) { inTema.focus(); return; }
+    Datos.guardar('agenda', leer());
+    cerrar(); recargar();
+  });
+}
+
+/* Crear, renombrar, colorear y conectar un calendario con Google. */
+function abrirEditorCalendario(cal, recargar) {
+  const nuevo = !cal;
+  const base = cal || { id: uid(), nombre: '', color: (calendarios().length % 8) + 1,
+    gcal_id: '', orden: calendarios().length };
+
+  const inNombre = el('input', { type: 'text', value: base.nombre || '',
+    placeholder: 'Por ejemplo: Secretaría de Participación' });
+  const inColor = el('div', { class: 'colores' });
+  let color = base.color || 1;
+  const NOMBRES_COLOR = ['Rojo', 'Azul', 'Naranjo', 'Verde', 'Violeta', 'Cian', 'Rosa', 'Oliva'];
+  const pintarColores = () => {
+    inColor.innerHTML = '';
+    NOMBRES_COLOR.forEach((n, i) => inColor.appendChild(el('button', {
+      class: 'muestra' + (color === i + 1 ? ' elegida' : ''), type: 'button',
+      style: `--c:${colorCalendario({ color: i + 1 })}`, title: n, 'aria-label': n,
+      onclick: () => { color = i + 1; pintarColores(); } })));
+  };
+  pintarColores();
+  const inGcal = el('input', { type: 'text', value: base.gcal_id || '',
+    placeholder: 'correo@u.uchile.cl o ...@group.calendar.google.com' });
+
+  const guardar = el('button', { class: 'btn btn-primary', type: 'button', text: 'Guardar' });
+  const pie = [guardar];
+  if (!nuevo && calendarios().length > 1) {
+    pie.push(el('button', { class: 'x', type: 'button', text: '✕ eliminar',
+      onclick: () => { cerrar(); UI.borrarConDeshacer('calendarios', { ...base }, 'Calendario', recargar); } }));
+  }
+
+  const cuerpo = [
+    el('label', { class: 'field' }, [el('span', { text: 'Nombre' }), inNombre]),
+    el('div', {}, [el('span', { class: 'etiqueta', text: 'Color' }), inColor]),
+    el('label', { class: 'field' }, [el('span', { text: 'ID del calendario en Google' }), inGcal]),
+    el('div', { class: 'note', text:
+      'El ID sale en Google Calendar → Configuración del calendario → "Integrar calendario". ' +
+      'Sirve para que la sincronización automática deje cada evento en el calendario que ' +
+      'corresponde. Si se deja vacío, el calendario vive sólo acá.' })
+  ];
+
+  const cerrar = globo(nuevo ? 'Nuevo calendario' : 'Calendario', cuerpo, pie);
+  guardar.addEventListener('click', () => {
+    if (!inNombre.value.trim()) { inNombre.focus(); return; }
+    Datos.guardar('calendarios', { ...base, nombre: inNombre.value.trim(),
+      color, gcal_id: inGcal.value.trim() });
+    cerrar(); recargar();
+  });
+}
+
+/* Ver una cosa del calendario. Las reuniones se editan; los hitos y los
+   plazos se miran, porque su dueño es el proyecto. */
+function abrirDetalle(e, recargar) {
+  if (e.tipo === 'reunion') { abrirEditorEvento(e.ref, e.fecha, '18:00', recargar); return; }
+  globo(e.tipo === 'hito' ? 'Hito' : 'Plazo de un paso', [
+    el('h3', { text: e.titulo, style: 'margin:0 0 6px; font-size:15px' }),
+    el('div', { class: 'mini', text: fechaCorta(e.fecha) + (e.contexto ? ' · ' + e.contexto : '') }),
+    e.gente && e.gente.length
+      ? el('div', { class: 'mini', style: 'margin-top:6px', text: 'A cargo: ' + e.gente.join(', ') })
+      : null,
+    el('div', { class: 'note', style: 'margin-top:10px', text: e.tipo === 'hito'
+      ? 'Los hitos se editan en el proyecto, dentro de la pestaña Proyectos.'
+      : 'Los plazos son la fecha de un paso: se cambian en el paso, dentro del proyecto.' })
+  ].filter(Boolean), [
+    el('button', { class: 'btn', type: 'button', text: 'Ir al proyecto',
+      onclick: () => { vista = 'proyectos'; filtros.texto = e.contexto || ''; render(); } })
+  ]);
+}
+
+/* ----------------------- las cuatro vistas ------------------------ */
+function vistaCalendario(raiz) {
+  const recargar = () => render();
+  if (!diaElegido) diaElegido = hoy();
+  const ancla = desdeIso(diaElegido);
+
+  /* Rango que se muestra, según la vista elegida. */
+  let desde, hasta, titulo;
+  if (calVista === 'dia') {
+    desde = hasta = diaElegido;
+    titulo = ancla.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
+    titulo = titulo.charAt(0).toUpperCase() + titulo.slice(1);
+  } else if (calVista === 'semana') {
+    const l = lunesDe(ancla);
+    desde = iso(l); hasta = iso(sumarDias(l, 6));
+    titulo = `${l.getDate()} – ${sumarDias(l, 6).getDate()} de ${mesLargo(l).toLowerCase()}`;
+  } else if (calVista === 'agenda') {
+    desde = hoy(); hasta = iso(sumarDias(new Date(), 60));
+    titulo = 'Próximos 60 días';
+  } else {
+    const p = new Date(mes.getFullYear(), mes.getMonth(), 1);
+    const arranque = lunesDe(p);
+    desde = iso(arranque); hasta = iso(sumarDias(arranque, 41));
+    titulo = mesLargo(p);
+  }
+
+  const eventos = eventosEntre(desde, hasta);
+
+  /* Barra de arriba: navegar, volver a hoy y cambiar de vista. */
+  const mover = paso => {
+    if (calVista === 'mes') { mes = new Date(mes.getFullYear(), mes.getMonth() + paso, 1); }
+    else if (calVista === 'semana') { diaElegido = iso(sumarDias(ancla, paso * 7)); mes = desdeIso(diaElegido); }
+    else if (calVista === 'dia') { diaElegido = iso(sumarDias(ancla, paso)); mes = desdeIso(diaElegido); }
+    render();
+  };
+  const seg = el('div', { class: 'seg' }, [['mes', 'Mes'], ['semana', 'Semana'],
+    ['dia', 'Día'], ['agenda', 'Agenda']].map(([id, txt]) =>
+    el('button', { type: 'button', text: txt, 'aria-pressed': String(calVista === id),
+      onclick: () => { calVista = id; render(); } })));
+
+  const barra = el('div', { class: 'gcal-cab' }, [
+    el('div', { class: 'gcal-nav' }, [
+      el('button', { class: 'btn btn-sm', type: 'button', text: 'Hoy',
+        onclick: () => { diaElegido = hoy(); mes = new Date(); render(); } }),
+      calVista === 'agenda' ? null : el('button', { class: 'ico', type: 'button', text: '‹',
+        'aria-label': 'Anterior', onclick: () => mover(-1) }),
+      calVista === 'agenda' ? null : el('button', { class: 'ico', type: 'button', text: '›',
+        'aria-label': 'Siguiente', onclick: () => mover(1) }),
+      el('b', { class: 'gcal-titulo', text: titulo })
+    ].filter(Boolean)),
+    el('div', { class: 'gcal-acciones' }, [
+      el('span', { class: 'mini', text: filtros.persona
+        ? `Sólo lo de ${filtros.persona}` : `${eventos.length} en pantalla` }),
+      seg,
+      /* En pantalla angosta el riel queda debajo, así que el botón de crear
+         tiene que estar también acá arriba. */
+      el('button', { class: 'btn btn-sm solo-angosto', type: 'button', text: '+ Crear',
+        onclick: () => abrirEditorEvento(null, diaElegido || hoy(), '18:00', recargar) })
+    ])
+  ]);
+
+  const lienzo = el('div', { class: 'card con-barra gcal' }, barra);
+  if (calVista === 'mes') lienzo.appendChild(rejillaMes(eventos, recargar));
+  else if (calVista === 'agenda') lienzo.appendChild(listaAgenda(eventos, recargar));
+  else lienzo.appendChild(rejillaHoras(desde, hasta, eventos, recargar));
+
+  raiz.appendChild(el('div', { class: 'columnas' },
+    [rielCalendario(mes, recargar), el('div', {}, [lienzo, notaGoogle()])]));
+}
+
+function rejillaMes(eventos, recargar) {
+  const porDia = eventos.reduce((a, e) => ((a[e.fecha] = a[e.fecha] || []).push(e), a), {});
   const grilla = el('div', { class: 'cal' });
   ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'].forEach(d =>
     grilla.appendChild(el('div', { class: 'dow', text: d })));
-
-  const desplazamiento = (primero.getDay() + 6) % 7;   /* la semana parte el lunes */
-  const inicio = new Date(y, m, 1 - desplazamiento);
+  const arranque = lunesDe(new Date(mes.getFullYear(), mes.getMonth(), 1));
   for (let i = 0; i < 42; i++) {
-    const d = new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate() + i);
+    const d = sumarDias(arranque, i);
     const clave = iso(d);
-    const delMes = d.getMonth() === m;
     const evs = porDia[clave] || [];
-    const celda = el('button', {
-      class: 'dia' + (delMes ? '' : ' fuera') + (i % 7 >= 5 ? ' finde' : '') +
-             (clave === hoy() ? ' hoy' : '') + (clave === diaElegido ? ' elegido' : ''),
-      type: 'button', onclick: () => { diaElegido = clave; render(); }
-    }, [el('span', { class: 'n', text: String(d.getDate()) })]);
-    evs.slice(0, 3).forEach(e => celda.appendChild(el('span', {
-      class: 'ev ' + e.tipo,
-      style: e.color ? `background:color-mix(in srgb, ${e.color} 24%, transparent)` : '',
-      text: (e.hora ? e.hora + ' ' : '') + recorta(e.titulo, 22) })));
-    if (evs.length > 3) celda.appendChild(el('span', { class: 'n', text: `+${evs.length - 3}` }));
-    if (evs.length) celda.appendChild(el('span', { class: 'punto-dia' },
-      evs.slice(0, 6).map(e => el('i', { style: `background:${e.color ||
-        (e.tipo === 'vencido' ? 'var(--critical)' : e.tipo === 'hito' ? 'var(--warning)' : 'var(--ramp-3)')}` }))));
+    const celda = el('div', {
+      class: 'dia' + (d.getMonth() === mes.getMonth() ? '' : ' fuera') +
+             (i % 7 >= 5 ? ' finde' : '') + (clave === hoy() ? ' hoy' : '') +
+             (clave === diaElegido ? ' elegido' : '')
+    });
+    celda.appendChild(el('button', { class: 'n', type: 'button', text: String(d.getDate()),
+      title: 'Ver este día', onclick: () => { diaElegido = clave; calVista = 'dia'; render(); } }));
+    evs.slice(0, 3).forEach(e => celda.appendChild(botonEvento(e, recargar, 'chip')));
+    if (evs.length > 3) celda.appendChild(el('button', { class: 'mas', type: 'button',
+      text: `+${evs.length - 3} más`,
+      onclick: () => { diaElegido = clave; calVista = 'dia'; render(); } }));
+    celda.appendChild(el('button', { class: 'hueco', type: 'button',
+      'aria-label': 'Crear un evento el ' + clave,
+      onclick: () => abrirEditorEvento(null, clave, '18:00', recargar) }));
     grilla.appendChild(celda);
   }
-
-  raiz.appendChild(el('div', { class: 'card compacta' }, [barra, capas, grilla]));
-  if (verCalendarios) raiz.appendChild(gestorCalendarios());
-
-  /* Día elegido */
-  const delDia = (porDia[diaElegido] || []);
-  const card = el('div', { class: 'card compacta' }, [
-    el('h2', { text: diaElegido ? fechaCorta(diaElegido) : 'Elige un día' }),
-    el('div', { class: 'sub', text: diaElegido ? `${delDia.length} cosas ese día` : 'Toca un día del calendario' })
-  ]);
-  delDia.forEach(e => card.appendChild(el('div', { class: 'evento' }, [
-    el('div', { class: 'cuando' }, [el('b', { text: e.hora || '—' }),
-      el('span', { text: e.tipo === 'reunion' ? 'reunión' : e.tipo === 'hito' ? 'hito' : 'plazo' })]),
-    el('div', { class: 'qué' }, [
-      el('div', { text: e.titulo }),
-      el('div', { style: 'font-size:12px;color:var(--ink-muted)',
-        text: [e.contexto, (e.gente || []).join(', ')].filter(Boolean).join(' · ') || '—' })
-    ])
-  ])));
-  if (diaElegido) {
-    const inTema = el('input', { type: 'text', placeholder: 'Nueva reunión ese día' });
-    const inHora = el('input', { type: 'time', value: '18:00', style: 'max-width:120px' });
-    const inMin = el('input', { type: 'number', value: 60, min: 15, step: 15, style: 'max-width:90px' });
-    const inCal = el('select', { style: 'max-width:200px', title: 'En qué calendario' });
-    calendarios().forEach(c => inCal.appendChild(el('option', { value: c.id, text: c.nombre })));
-    let elegidos = filtros.persona ? [filtros.persona] : [];
-
-    const cajaGente = el('div', { class: 'meta' });
-    const cajaAviso = el('div', {});
-    const boton = el('button', { class: 'btn btn-sm btn-primary', type: 'button', text: 'Agendar' });
-
-    const revisar = () => {
-      const avisos = avisosReunion({ id: null, tema: inTema.value,
-        inicio: `${diaElegido}T${inHora.value || '18:00'}`,
-        duracion: Number(inMin.value) || 60, invitados: elegidos.join(', ') });
-      cajaAviso.innerHTML = '';
-      const caja = cajaAvisos(avisos);
-      if (caja) cajaAviso.appendChild(caja);
-      boton.textContent = avisos.length ? 'Agendar de todos modos' : 'Agendar';
-    };
-
-    const pintarGente = () => {
-      cajaGente.innerHTML = '';
-      if (!nombres().length) {
-        cajaGente.appendChild(el('span', { style: 'font-size:12.5px;color:var(--ink-muted)',
-          text: 'Carga al equipo en la pestaña Equipo para avisar de los choques de horario.' }));
-        return;
-      }
-      nombres().forEach(n => {
-        const dentro = elegidos.includes(n);
-        const persona = personaPorNombre(n);
-        cajaGente.appendChild(el('button', {
-          class: 'tag' + (dentro ? ' principal' : ''), type: 'button',
-          title: 'Disponible: ' + resumenHorario(persona),
-          text: (dentro ? '✓ ' : '+ ') + n,
-          onclick: () => {
-            elegidos = dentro ? elegidos.filter(x => x !== n) : [...elegidos, n];
-            pintarGente(); revisar();
-          } }));
-      });
-    };
-    pintarGente();
-
-    inHora.addEventListener('input', revisar);
-    inMin.addEventListener('input', revisar);
-    revisar();
-
-    boton.addEventListener('click', () => {
-      if (!inTema.value.trim()) { inTema.focus(); return; }
-      Datos.guardar('agenda', { id: uid(), tema: inTema.value.trim(),
-        inicio: `${diaElegido}T${inHora.value || '18:00'}`, duracion: Number(inMin.value) || 60,
-        formato: 'Presencial', lugar: '', invitados: elegidos.join(', '),
-        estado: 'Por agendar', proyecto: null, calendario: inCal.value });
-      render();
-    });
-
-    card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px; flex-wrap:wrap' },
-      [inTema, inHora, inMin, inCal]));
-    card.appendChild(el('div', { style: 'margin-top:8px' }, cajaGente));
-    card.appendChild(cajaAviso);
-    card.appendChild(el('div', { style: 'margin-top:8px' }, boton));
-  }
-  raiz.appendChild(card);
-
-  /* Reuniones: edición y sincronización */
-  const reuniones = Datos.todo('agenda').slice()
-    .sort((a, b) => String(a.inicio).localeCompare(String(b.inicio)));
-  const card2 = el('div', { class: 'card compacta' }, [
-    el('h2', { text: 'Reuniones agendadas' }),
-    el('div', { class: 'sub', text: `${reuniones.length} en total · la invitación sirve para Google Calendar` })
-  ]);
-  if (!reuniones.length) card2.appendChild(el('div', { class: 'empty', text: 'Nada agendado todavía.' }));
-  reuniones.forEach(ev => {
-    const c = (tipo, valor, nombre, extra) => {
-      const i = el('input', Object.assign({ type: tipo, value: valor || '' }, extra || {}));
-      i.addEventListener('change', () => { ev[nombre] = i.value; Datos.guardar('agenda', ev); render(); });
-      return i;
-    };
-    card2.appendChild(el('div', { class: 'evento' }, [
-      el('div', { class: 'cuando' }, [el('b', { text: ev.inicio ? fechaCorta(ev.inicio) : '—' }),
-        el('span', { text: horaDe(ev.inicio) || 'sin hora' })]),
-      el('div', { class: 'qué' }, [
-        c('text', ev.tema, 'tema'),
-        el('div', { class: 'campos' }, [
-          el('label', { class: 'field' }, [el('span', { text: 'Cuándo' }), c('datetime-local', ev.inicio, 'inicio')]),
-          el('label', { class: 'field' }, [el('span', { text: 'Minutos' }), c('number', ev.duracion || 60, 'duracion', { min: 15, step: 15 })]),
-          el('label', { class: 'field' }, [el('span', { text: 'Formato' }),
-            selector(SPT.listas.formato, ev.formato, v => { ev.formato = v; Datos.guardar('agenda', ev); }, null)]),
-          el('label', { class: 'field' }, [el('span', { text: 'Lugar o enlace' }), c('text', ev.lugar, 'lugar')]),
-          el('label', { class: 'field' }, [el('span', { text: 'Invitados' }), c('text', ev.invitados, 'invitados')]),
-          el('label', { class: 'field' }, [el('span', { text: 'Calendario' }),
-            selector(calendarios().map(x => x.nombre), (calendarioDe(ev.calendario) || {}).nombre,
-              nombre => {
-                const cal = calendarios().find(x => x.nombre === nombre);
-                ev.calendario = cal ? cal.id : '';
-                Datos.guardar('agenda', ev); render();
-              }, 'Sin calendario')])
-        ]),
-        cajaAvisos(avisosReunion(ev)),
-        el('div', { class: 'toolbar', style: 'margin:8px 0 0' }, [
-          el('a', { class: 'btn btn-sm btn-primary', href: enlaceGoogle(ev), target: '_blank',
-            rel: 'noopener', text: 'Añadir a Google Calendar' }),
-          el('button', { class: 'btn btn-sm', type: 'button', text: 'Descargar invitación',
-            title: 'Archivo .ics para Outlook u otros calendarios',
-            onclick: () => descargar((ev.tema || 'reunion').replace(/\W+/g, '-') + '.ics',
-              ics(ev), 'text/calendar;charset=utf-8') }),
-          el('button', { class: 'x', type: 'button', text: '✕ eliminar',
-            onclick: () => UI.borrarConDeshacer('agenda', { ...ev }, 'Reunión', render) })
-        ])
-      ])
-    ]));
-  });
-  raiz.appendChild(card2);
-
-  raiz.appendChild(el('div', { class: 'card compacta' }, [
-    el('h2', { text: 'Google Calendar' }),
-    el('div', { class: 'sub', text: 'Cómo pasar esto a tu calendario' }),
-    el('div', { class: 'note' }, [
-      el('p', { text: 'Cada reunión tiene el botón "Añadir a Google Calendar": abre Google con la ' +
-        'reunión ya escrita —tema, hora, lugar e invitados— y sólo hay que guardar. Funciona con ' +
-        'cualquier cuenta, incluida la de la universidad, sin configurar nada.' }),
-      el('p', { text: 'Para que los invitados lleguen por correo, cada persona necesita su correo ' +
-        'cargado en la pestaña Equipo.' }),
-      el('p', { text: 'La sincronización automática en los dos sentidos necesita la cuenta de ' +
-        'servicio de Google conectada en el servidor. Mientras tanto, este botón hace el trabajo.' })
-    ])
-  ]));
+  return grilla;
 }
 
+function botonEvento(e, recargar, forma) {
+  const punto = el('i', { style: `background:${e.color}` });
+  const b = el('button', {
+    class: 'ev ' + e.tipo + (forma ? ' ' + forma : '') + (e.hecho ? ' hecho' : ''),
+    type: 'button',
+    title: `${e.hora ? e.hora + ' · ' : ''}${e.titulo}` +
+           (e.contexto ? `\n${e.contexto}` : '') +
+           (e.gente && e.gente.length ? `\n${e.gente.join(', ')}` : ''),
+    onclick: ev => { ev.stopPropagation(); abrirDetalle(e, recargar); }
+  }, [punto, el('span', { text: (e.hora ? e.hora + ' ' : '') + e.titulo })]);
+  return b;
+}
+
+/* Semana y día comparten rejilla: cambia cuántas columnas tiene. */
+function rejillaHoras(desde, hasta, eventos, recargar) {
+  const dias = [];
+  for (let d = desdeIso(desde); iso(d) <= hasta; d = sumarDias(d, 1)) dias.push(iso(d));
+
+  const caja = el('div', { class: 'horas-caja' });
+
+  /* Encabezado con el día de la semana y el número. */
+  const cab = el('div', { class: 'horas-cab', style: `--dias:${dias.length}` },
+    [el('span', { class: 'gutter' })]);
+  dias.forEach(clave => {
+    const d = desdeIso(clave);
+    cab.appendChild(el('button', {
+      class: 'cab-dia' + (clave === hoy() ? ' hoy' : ''), type: 'button',
+      onclick: () => { diaElegido = clave; calVista = 'dia'; render(); }
+    }, [
+      el('span', { class: 'dow', text: d.toLocaleDateString('es-CL', { weekday: 'short' }) }),
+      el('b', { text: String(d.getDate()) })
+    ]));
+  });
+  caja.appendChild(cab);
+
+  /* Fila de día completo: hitos y plazos, que no tienen hora. */
+  const sinHora = eventos.filter(e => e.minuto === null);
+  if (sinHora.length) {
+    const fila = el('div', { class: 'todo-dia', style: `--dias:${dias.length}` },
+      [el('span', { class: 'gutter', text: 'todo el día' })]);
+    dias.forEach(clave => {
+      const celda = el('div', { class: 'td-celda' });
+      sinHora.filter(e => e.fecha === clave).forEach(e => celda.appendChild(botonEvento(e, recargar, 'chip')));
+      fila.appendChild(celda);
+    });
+    caja.appendChild(fila);
+  }
+
+  /* La rejilla con las horas. */
+  const cuerpo = el('div', { class: 'horas-cuerpo', style: `--dias:${dias.length}` });
+  const gutter = el('div', { class: 'gutter-horas' });
+  for (let h = HORA_DESDE; h <= HORA_HASTA; h++) {
+    gutter.appendChild(el('span', { class: 'h', style: `height:${ALTO_HORA}px`,
+      text: String(h).padStart(2, '0') + ':00' }));
+  }
+  cuerpo.appendChild(gutter);
+
+  dias.forEach(clave => {
+    const col = el('div', { class: 'col-dia' + (clave === hoy() ? ' hoy' : '') });
+    for (let h = HORA_DESDE; h <= HORA_HASTA; h++) {
+      col.appendChild(el('button', { class: 'franja', type: 'button',
+        style: `height:${ALTO_HORA}px`,
+        'aria-label': `Crear un evento el ${clave} a las ${h}:00`,
+        onclick: () => abrirEditorEvento(null, clave, String(h).padStart(2, '0') + ':00', recargar) }));
+    }
+    /* Los eventos van encima, ubicados por su hora. */
+    const delDia = repartirColumnas(eventos.filter(e => e.fecha === clave));
+    delDia.forEach(e => {
+      const top = (e.minuto - HORA_DESDE * 60) / 60 * ALTO_HORA;
+      const alto = Math.max(20, e.duracion / 60 * ALTO_HORA - 2);
+      const ancho = 100 / (e._cols || 1);
+      col.appendChild(el('button', {
+        class: 'ev-t', type: 'button',
+        style: `top:${Math.max(0, top)}px; height:${alto}px; ` +
+               `left:${(e._col || 0) * ancho}%; width:calc(${ancho}% - 3px); ` +
+               `--c:${e.color}`,
+        title: `${e.hora} · ${e.titulo}` + (e.gente.length ? `\n${e.gente.join(', ')}` : ''),
+        onclick: () => abrirDetalle(e, recargar)
+      }, [
+        el('b', { text: e.titulo }),
+        el('span', { text: e.hora + (e.calendario ? ' · ' + e.calendario : '') })
+      ]));
+    });
+    /* La línea de la hora actual, como en Google. */
+    if (clave === hoy()) {
+      const ahora = new Date();
+      const m = ahora.getHours() * 60 + ahora.getMinutes();
+      if (m >= HORA_DESDE * 60 && m <= (HORA_HASTA + 1) * 60) {
+        col.appendChild(el('div', { class: 'ahora',
+          style: `top:${(m - HORA_DESDE * 60) / 60 * ALTO_HORA}px` }));
+      }
+    }
+    cuerpo.appendChild(col);
+  });
+  caja.appendChild(cuerpo);
+  return caja;
+}
+
+function listaAgenda(eventos, recargar) {
+  const caja = el('div', { class: 'agenda' });
+  if (!eventos.length) {
+    caja.appendChild(el('div', { class: 'empty',
+      text: 'Nada agendado en los próximos 60 días.' }));
+    return caja;
+  }
+  let dia = null;
+  eventos.forEach(e => {
+    if (e.fecha !== dia) {
+      dia = e.fecha;
+      const d = desdeIso(dia);
+      caja.appendChild(el('div', { class: 'agenda-dia' + (dia === hoy() ? ' hoy' : '') }, [
+        el('b', { text: String(d.getDate()) }),
+        el('span', { text: d.toLocaleDateString('es-CL', { weekday: 'long', month: 'short' }) })
+      ]));
+    }
+    caja.appendChild(el('button', { class: 'agenda-fila', type: 'button',
+      onclick: () => abrirDetalle(e, recargar) }, [
+      el('i', { style: `background:${e.color}` }),
+      el('span', { class: 'ag-hora', text: e.hora || 'todo el día' }),
+      el('span', { class: 'ag-tit', text: e.titulo }),
+      el('span', { class: 'ag-pie', text: [e.contexto, (e.gente || []).join(', ')]
+        .filter(Boolean).join(' · ') })
+    ]));
+  });
+  return caja;
+}
+
+function notaGoogle() {
+  const conG = calendarios().filter(c => c.gcal_id).length;
+  return el('div', { class: 'card compacta' }, [
+    el('h2', { text: 'Google Calendar' }),
+    el('div', { class: 'sub', text: conG
+      ? `${conG} de ${calendarios().length} calendarios tienen su ID de Google cargado.`
+      : 'Ningún calendario tiene todavía su ID de Google.' }),
+    el('div', { class: 'note' }, [
+      el('p', { text: 'Cada evento tiene el botón "Abrir en Google": lleva a Google Calendar con ' +
+        'el evento ya escrito —título, hora, lugar e invitados— y sólo hay que guardar. ' +
+        'Funciona con cualquier cuenta, incluida la de la universidad, sin configurar nada.' }),
+      el('p', { text: 'Para que los invitados lleguen por correo, cada persona necesita su ' +
+        'correo cargado en la pestaña Equipo.' }),
+      el('p', { text: 'La sincronización automática en los dos sentidos necesita la cuenta de ' +
+        'servicio conectada en el servidor y el ID de Google en cada calendario (el botón ⋯ ' +
+        'de la lista de la izquierda). El paso a paso está en GOOGLE.md.' })
+    ]),
+    el('div', { class: 'toolbar' }, [
+      el('a', { class: 'btn btn-sm', href: 'https://calendar.google.com', target: '_blank',
+        rel: 'noopener', text: 'Abrir Google Calendar' }),
+      el('button', { class: 'btn btn-sm', type: 'button', text: 'Descargar todo en .ics',
+        title: 'Un archivo con todas las reuniones, para importar en Google, Outlook o Apple',
+        onclick: () => descargar('calendario-spt-participacion.ics', icsTodo(),
+          'text/calendar;charset=utf-8') })
+    ])
+  ]);
+}
+
+/* Enlace que abre Google Calendar con el evento ya escrito. Funciona con
+   cualquier cuenta y sin configurar nada: es el camino corto mientras la
+   sincronización automática no esté conectada. */
 function enlaceGoogle(ev) {
   const pad = n => String(n).padStart(2, '0');
   const sello = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T` +
@@ -1077,64 +1465,34 @@ function enlaceGoogle(ev) {
     : (ev.inicio.length <= 10 ? ev.inicio + 'T09:00' : ev.inicio));
   const fin = new Date(inicio.getTime() + (Number(ev.duracion) || 60) * 60000);
 
-  const correos = String(ev.invitados || '').split(',').map(x => x.trim()).filter(Boolean)
-    .map(nombre => {
-      const persona = integrantes().find(i => i.nombre === nombre);
-      return persona && persona.correo ? persona.correo : (nombre.includes('@') ? nombre : '');
-    }).filter(Boolean);
+  const correos = nombresDe(ev.invitados).map(nombre => {
+    const persona = integrantes().find(i => i.nombre === nombre);
+    return persona && persona.correo ? persona.correo : (nombre.includes('@') ? nombre : '');
+  }).filter(Boolean);
 
+  const cal = calendarioDe(ev.calendario);
   const params = new URLSearchParams({
     action: 'TEMPLATE',
     text: ev.tema || 'Reunión',
     dates: `${sello(inicio)}/${sello(fin)}`,
     details: 'Creado desde el SPT · Secretaría de Participación' +
+      (cal ? `\nCalendario: ${cal.nombre}` : '') +
       (ev.invitados ? `\nInvitados: ${ev.invitados}` : ''),
     location: ev.lugar || ''
   });
+  if (cal && cal.gcal_id) params.set('src', cal.gcal_id);
   correos.forEach(c => params.append('add', c));
   return 'https://calendar.google.com/calendar/render?' + params.toString();
 }
 
-/* Crear, renombrar y colorear calendarios, y apuntar cada uno al suyo de Google. */
-function gestorCalendarios() {
-  const card = el('div', { class: 'card compacta' }, [
-    el('h2', { text: 'Calendarios' }),
-    el('div', { class: 'sub', text: 'Uno por ámbito: la secretaría, un proyecto grande, lo personal' })
-  ]);
-  calendarios().forEach(c => {
-    const nombre = el('input', { type: 'text', value: c.nombre, style: 'max-width:220px' });
-    nombre.addEventListener('change', () => { c.nombre = nombre.value; Datos.guardar('calendarios', c); render(); });
-    const color = el('select', { style: 'max-width:120px' });
-    ['Rojo', 'Azul', 'Naranjo', 'Verde', 'Violeta', 'Cian', 'Rosa', 'Oliva']
-      .forEach((n, i) => color.appendChild(el('option', { value: String(i + 1), text: n })));
-    color.value = String(c.color || 1);
-    color.addEventListener('change', () => { c.color = Number(color.value); Datos.guardar('calendarios', c); render(); });
-    const gcal = el('input', { type: 'text', value: c.gcal_id || '',
-      placeholder: 'ID del calendario de Google (opcional)' });
-    gcal.addEventListener('change', () => { c.gcal_id = gcal.value.trim(); Datos.guardar('calendarios', c); });
-    card.appendChild(el('div', { style: 'display:flex; gap:8px; align-items:center; padding:4px 0; flex-wrap:wrap' }, [
-      el('span', { class: 'dot', style: `background:${colorCalendario(c)}` }),
-      nombre, color, gcal,
-      calendarios().length > 1 ? el('button', { class: 'x', type: 'button', text: '✕',
-        title: 'Eliminar calendario',
-        onclick: () => UI.borrarConDeshacer('calendarios', { ...c }, 'Calendario', render) }) : null
-    ].filter(Boolean)));
-  });
-  const nuevo = el('input', { type: 'text', placeholder: 'Nombre del calendario', style: 'max-width:240px' });
-  const crear = () => {
-    if (!nuevo.value.trim()) return;
-    Datos.guardar('calendarios', { id: uid(), nombre: nuevo.value.trim(),
-      color: (calendarios().length % 8) + 1, gcal_id: '', orden: calendarios().length });
-    nuevo.value = ''; render();
-  };
-  nuevo.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); crear(); } });
-  card.appendChild(el('div', { style: 'display:flex; gap:8px; margin-top:10px' }, [
-    nuevo, el('button', { class: 'btn btn-sm', type: 'button', text: 'Crear', onclick: crear })
-  ]));
-  card.appendChild(el('div', { class: 'note', style: 'margin-top:10px', text:
-    'El ID de Google se usa para la sincronización automática: cada calendario de acá puede ir a ' +
-    'uno distinto allá. Se deja vacío si no se sincroniza.' }));
-  return card;
+/* Todas las reuniones en un solo archivo, para importarlas de una vez. */
+function icsTodo() {
+  const cuerpo = Datos.todo('agenda').map(ev => ics(ev)
+    .replace(/^BEGIN:VCALENDAR[\s\S]*?BEGIN:VEVENT/, 'BEGIN:VEVENT')
+    .replace(/END:VCALENDAR$/, '').trim());
+  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//FECh//SPT//ES',
+    'X-WR-CALNAME:SPT · Secretaría de Participación',
+    ...cuerpo, 'END:VCALENDAR'].join('\r\n');
 }
 
 function ics(ev) {
@@ -1356,7 +1714,11 @@ function render() {
     return;
   }
   if (nav) nav.style.display = '';
-  $('#filtros').style.display = (vista === 'equipo') ? 'none' : '';
+  UI.pintarModulos(nav);
+  UI.migas($('#migas'), ['FECh 2026', 'SPT · Participación', {
+    tablero: 'Tablero', panel: 'Panel', proyectos: 'Proyectos',
+    calendario: 'Calendario', equipo: 'Equipo' }[vista] || 'Tablero']);
+  $('#filtros').style.display = (vista === 'equipo' || vista === 'calendario') ? 'none' : '';
   if (vista === 'tablero') vistaTablero(raiz);
   else if (vista === 'panel') vistaPanel(raiz);
   else if (vista === 'proyectos') vistaProyectos(raiz);

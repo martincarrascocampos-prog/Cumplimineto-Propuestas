@@ -585,3 +585,380 @@ main > .card:nth-of-type(6) .toolbar h2::before{background:var(--rosa)}
 .sec-titulo h2::before{display:none}
 .meter-fill{background-image:linear-gradient(180deg, rgba(255,255,255,.22), rgba(0,0,0,.06))}
 .bar-mini i{background-image:linear-gradient(180deg, rgba(255,255,255,.22), rgba(0,0,0,.06))}
+
+/* ==================================================================== *
+ * Interfaz al modo de U-Cursos y U-Campus
+ *
+ * Tres cosas se toman de ahí: la barra superior institucional oscura, la
+ * barra de módulos con un pictograma por sección —que hace visibles todas
+ * las opciones de una sola mirada— y las migas de pan que dicen dónde
+ * está parada una.
+ * ==================================================================== */
+
+header.top{
+  background:var(--ink); color:#eef4f3; padding:11px 18px;
+  box-shadow:0 2px 10px rgba(0,52,61,.18);
+}
+header.top::after{height:3px}
+.brand b{color:#fff; font-size:15.5px}
+.brand span{color:#a9c4c3; font-size:12px}
+.brand-mark{background:#fffffa; box-shadow:none; width:28px; height:28px; border-radius:8px}
+.brand-mark::after{background:var(--ink); box-shadow:0 5px 0 var(--accent-vivo), 0 10px 0 var(--naranjo);
+  inset:6px 6px auto 6px}
+header.top .btn,header.top .salto{
+  background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.22); color:#eef4f3;
+  box-shadow:none;
+}
+header.top .btn:hover,header.top .salto:hover{
+  background:rgba(255,255,255,.20); border-color:rgba(255,255,255,.4); color:#fff;
+}
+header.top .conexion{background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.22); color:#dce9e8}
+header.top .secciones{background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.22)}
+header.top .secciones button{color:#bcd4d3}
+header.top .secciones button:hover{color:#fff}
+header.top .secciones button[aria-pressed="true"]{background:#fffffa; color:var(--ink)}
+
+/* --- barra de módulos: un ícono y una palabra por sección ------------ */
+nav.tabs{
+  padding:0 12px; gap:0; background:var(--surface);
+  border-bottom:1px solid var(--border); box-shadow:0 1px 0 rgba(0,52,61,.04);
+  position:sticky; top:0; z-index:15;
+}
+.tab{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:9px 16px 8px; min-width:82px; border-radius:0;
+  font-size:12.5px; line-height:1.15; color:var(--ink-2);
+}
+.tab svg{display:block; opacity:.72; transition:opacity .16s var(--curva), transform .16s var(--curva)}
+.tab:hover svg{opacity:1; transform:translateY(-1px)}
+.tab[aria-selected="true"]{color:var(--accent-vivo); font-weight:600; background:var(--crema)}
+.tab[aria-selected="true"] svg{opacity:1}
+.tab::after{left:0; right:0; height:3px; border-radius:0}
+@media (max-width:640px){
+  .tab{min-width:0; padding:8px 11px 7px; font-size:11px}
+  .tab svg{width:18px; height:18px}
+}
+
+/* --- migas de pan ---------------------------------------------------- */
+.migas{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  max-width:1180px; margin:0 auto; padding:9px 16px 0;
+  font-size:12px; color:var(--ink-muted);
+}
+.migas i{font-style:normal; color:var(--ramp-1)}
+.migas span[aria-current]{color:var(--ink); font-weight:600}
+.migas:empty{display:none}
+
+/* --- cabecera de sección con banda de color (U-Campus) --------------- */
+.barra-seccion{
+  display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  background:var(--ink); color:#eef4f3; border-radius:11px 11px 0 0;
+  padding:9px 14px; margin:-1px -1px 12px;
+}
+.barra-seccion h2{color:#fff; margin:0; padding:0; font-size:14px; letter-spacing:.01em}
+.barra-seccion h2::before{display:none}
+.barra-seccion .sub{color:#a9c4c3; margin:0; font-size:12px}
+.barra-seccion .btn{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25);
+  color:#eef4f3; box-shadow:none}
+.barra-seccion .btn:hover{background:rgba(255,255,255,.22); color:#fff}
+.barra-seccion .seg{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.22)}
+.barra-seccion .seg button{color:#c8dcdb}
+.barra-seccion .seg button[aria-pressed="true"]{background:#fffffa; color:var(--ink)}
+.card.con-barra{padding-top:0; overflow:hidden}
+
+/* --- disposición de dos columnas: riel de opciones + contenido ------- */
+.columnas{display:grid; grid-template-columns:248px minmax(0,1fr); gap:14px; align-items:start}
+.riel{position:sticky; top:74px; display:flex; flex-direction:column; gap:12px}
+.riel .card{padding:12px 13px}
+.riel h3{font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--ink-muted); margin:0 0 7px}
+@media (max-width:920px){
+  .columnas{grid-template-columns:1fr}
+  .riel{position:static}
+}
+
+/* ==================================================================== *
+ * Calendario al modo de Google Calendar
+ * ==================================================================== */
+
+.gcal{padding:0}
+.gcal-cab{display:flex; align-items:center; justify-content:space-between; gap:12px;
+  flex-wrap:wrap; background:var(--ink); color:#eef4f3; padding:9px 12px; margin:0 0 0}
+.gcal-nav{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.gcal-titulo{font-size:15px; color:#fff; letter-spacing:-.01em; margin-left:4px}
+.gcal-acciones{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.gcal-acciones .mini{color:#a9c4c3}
+.gcal-cab .btn{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.25);
+  color:#eef4f3; box-shadow:none}
+.gcal-cab .btn:hover{background:rgba(255,255,255,.22); color:#fff}
+.gcal-cab .seg{background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.22)}
+.gcal-cab .seg button{color:#c8dcdb}
+.gcal-cab .seg button[aria-pressed="true"]{background:#fffffa; color:var(--ink)}
+
+/* Botón redondo y chico, para las flechas y los "⋯" */
+.ico{background:none; border:1px solid transparent; border-radius:50%; cursor:pointer;
+  width:28px; height:28px; line-height:1; color:inherit; font-size:15px; flex:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  transition:background .15s var(--curva), border-color .15s var(--curva)}
+.ico:hover{background:color-mix(in srgb, currentColor 14%, transparent)}
+.gcal-cab .ico{color:#dce9e8}
+
+/* --- riel: crear, mini-mes y lista de calendarios -------------------- */
+.btn-crear{justify-content:center; width:100%; padding:10px 12px; font-size:14px}
+.mini-caja{padding:10px 11px}
+.mini-cab{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px}
+.mini-cab b{font-size:12.5px}
+.mini-cab .ico{width:24px; height:24px; font-size:14px; color:var(--ink-2)}
+.mini-rejilla{display:grid; grid-template-columns:repeat(7,1fr); gap:1px}
+.mini-dow{text-align:center; font-size:10px; color:var(--ink-muted); padding:2px 0}
+.mini-dia{background:none; border:none; cursor:pointer; border-radius:50%;
+  aspect-ratio:1; font-size:11.5px; color:var(--ink-2); position:relative;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .14s var(--curva), color .14s var(--curva)}
+.mini-dia:hover{background:var(--crema)}
+.mini-dia.fuera{color:var(--ink-muted); opacity:.5}
+.mini-dia.hoy{background:var(--naranjo); color:#fff; font-weight:700}
+.mini-dia.elegido{box-shadow:0 0 0 2px var(--accent-vivo) inset; color:var(--ink); font-weight:600}
+.mini-dia.con::after{content:''; position:absolute; bottom:2px; width:3px; height:3px;
+  border-radius:50%; background:var(--accent-vivo)}
+.mini-dia.hoy.con::after{background:#fff}
+
+.cal-fila{display:flex; align-items:center; gap:8px; padding:3px 0}
+.cal-marca{width:15px; height:15px; border-radius:4px; flex:none; cursor:pointer;
+  border:2px solid var(--c); background:var(--c); position:relative;
+  transition:background .15s var(--curva)}
+.cal-marca::after{content:'✓'; position:absolute; inset:0; color:#fff; font-size:11px;
+  line-height:11px; display:flex; align-items:center; justify-content:center}
+.cal-marca.apagada{background:transparent}
+.cal-marca.apagada::after{content:''}
+.cal-nombre{flex:1; font-size:12.5px; color:var(--ink-2); overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.cal-g{font-size:10px; font-weight:700; color:var(--azul); border:1px solid var(--azul);
+  border-radius:4px; padding:0 4px; flex:none}
+.cal-fila .ico{width:24px; height:24px; color:var(--ink-muted)}
+
+/* --- vista de mes ---------------------------------------------------- */
+.gcal .cal{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:0;
+  border-top:1px solid var(--border)}
+.gcal .dow{text-align:center; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--ink-muted); padding:6px 0; border-bottom:1px solid var(--border);
+  border-right:1px solid var(--border)}
+.gcal .dow:nth-child(7n){border-right:none}
+.gcal .dia{position:relative; min-height:96px; border:none; border-right:1px solid var(--border);
+  border-bottom:1px solid var(--border); border-radius:0; padding:2px 3px 3px;
+  display:flex; flex-direction:column; gap:2px; transform:none !important; box-shadow:none !important}
+.gcal .dia:nth-child(7n){border-right:none}
+.gcal .dia .n{align-self:center; background:none; border:none; cursor:pointer;
+  font-size:11.5px; color:var(--ink-2); border-radius:50%; width:22px; height:22px;
+  display:flex; align-items:center; justify-content:center; position:relative; z-index:2}
+.gcal .dia .n:hover{background:var(--crema)}
+.gcal .dia.hoy .n{background:var(--naranjo); color:#fff; font-weight:700}
+.gcal .dia .hueco{position:absolute; inset:0; background:none; border:none; cursor:pointer;
+  z-index:0}
+.gcal .dia .hueco:hover{background:color-mix(in srgb, var(--accent-vivo) 6%, transparent)}
+.gcal .dia .mas{background:none; border:none; cursor:pointer; font-size:10.5px;
+  color:var(--ink-muted); text-align:left; padding:0 4px; position:relative; z-index:2}
+.gcal .dia .mas:hover{color:var(--accent-vivo)}
+
+/* Un evento, en cualquier vista que use "chip" */
+.ev{display:flex; align-items:center; gap:5px; width:100%; background:none; border:none;
+  cursor:pointer; text-align:left; padding:1px 4px; border-radius:4px; font-size:11px;
+  line-height:1.3; color:var(--ink-2); position:relative; z-index:2;
+  transition:background .14s var(--curva)}
+.ev:hover{background:var(--crema)}
+.ev i{width:7px; height:7px; border-radius:50%; flex:none}
+.ev span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ev.hecho span{text-decoration:line-through; opacity:.6}
+.ev.reunion{background:color-mix(in srgb, var(--accent-vivo) 12%, transparent)}
+.ev.reunion:hover{background:color-mix(in srgb, var(--accent-vivo) 22%, transparent)}
+
+/* --- vistas de semana y día ------------------------------------------ */
+.horas-caja{border-top:1px solid var(--border)}
+.horas-cab{display:grid; grid-template-columns:56px repeat(var(--dias),minmax(0,1fr));
+  border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--surface); z-index:3}
+.cab-dia{background:none; border:none; border-left:1px solid var(--border); cursor:pointer;
+  padding:5px 0 6px; display:flex; flex-direction:column; align-items:center; gap:1px;
+  transition:background .14s var(--curva)}
+.cab-dia:hover{background:var(--crema)}
+.cab-dia .dow{font-size:10.5px; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--ink-muted); padding:0; border:none}
+.cab-dia b{font-size:17px; color:var(--ink-2); width:30px; height:30px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center}
+.cab-dia.hoy b{background:var(--naranjo); color:#fff}
+
+.todo-dia{display:grid; grid-template-columns:56px repeat(var(--dias),minmax(0,1fr));
+  border-bottom:1px solid var(--border); background:var(--papel)}
+.todo-dia .gutter{font-size:9.5px; color:var(--ink-muted); text-align:right;
+  padding:4px 6px 0 0; text-transform:uppercase; letter-spacing:.03em}
+.td-celda{border-left:1px solid var(--border); padding:3px; display:flex;
+  flex-direction:column; gap:2px; min-height:26px}
+
+.horas-cuerpo{display:grid; grid-template-columns:56px repeat(var(--dias),minmax(0,1fr));
+  max-height:620px; overflow-y:auto; position:relative}
+.gutter-horas{display:flex; flex-direction:column}
+.gutter-horas .h{font-size:10.5px; color:var(--ink-muted); text-align:right;
+  padding:2px 6px 0 0; flex:none; box-sizing:border-box}
+.col-dia{position:relative; border-left:1px solid var(--border)}
+.col-dia.hoy{background:color-mix(in srgb, var(--naranjo) 4%, transparent)}
+.franja{display:block; width:100%; background:none; border:none;
+  border-bottom:1px solid color-mix(in srgb, var(--border) 65%, transparent); cursor:pointer;
+  transition:background .12s var(--curva)}
+.franja:hover{background:color-mix(in srgb, var(--accent-vivo) 9%, transparent)}
+.ev-t{position:absolute; z-index:2; overflow:hidden; cursor:pointer; text-align:left;
+  padding:2px 5px; border-radius:5px; border:none; border-left:3px solid var(--c);
+  background:color-mix(in srgb, var(--c) 17%, var(--surface));
+  color:var(--ink); display:flex; flex-direction:column; gap:1px; min-width:0;
+  transition:box-shadow .15s var(--curva), background .15s var(--curva)}
+.ev-t:hover{background:color-mix(in srgb, var(--c) 28%, var(--surface));
+  box-shadow:0 2px 8px rgba(0,52,61,.18); z-index:4}
+.ev-t b{font-size:11.5px; line-height:1.2; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap}
+.ev-t span{font-size:10px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap}
+.ahora{position:absolute; left:0; right:0; height:2px; background:var(--critical); z-index:3;
+  pointer-events:none}
+.ahora::before{content:''; position:absolute; left:-4px; top:-3px; width:8px; height:8px;
+  border-radius:50%; background:var(--critical)}
+
+/* --- vista de agenda -------------------------------------------------- */
+.agenda{padding:4px 0}
+.agenda-dia{display:flex; align-items:baseline; gap:8px; padding:10px 14px 4px;
+  border-top:1px solid var(--border); margin-top:2px}
+.agenda-dia:first-child{border-top:none}
+.agenda-dia b{font-size:19px; color:var(--ink); letter-spacing:-.02em}
+.agenda-dia span{font-size:12px; color:var(--ink-muted)}
+.agenda-dia.hoy b{color:var(--naranjo)}
+.agenda-fila{display:flex; align-items:center; gap:10px; width:100%; background:none;
+  border:none; cursor:pointer; text-align:left; padding:6px 14px;
+  transition:background .14s var(--curva)}
+.agenda-fila:hover{background:var(--crema)}
+.agenda-fila i{width:9px; height:9px; border-radius:50%; flex:none}
+.ag-hora{font-size:12px; color:var(--ink-muted); width:82px; flex:none;
+  font-variant-numeric:tabular-nums}
+.ag-tit{font-size:13.5px; color:var(--ink); flex:1; min-width:0; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+.ag-pie{font-size:11.5px; color:var(--ink-muted); max-width:38%; overflow:hidden;
+  text-overflow:ellipsis; white-space:nowrap}
+
+/* --- globo de edición -------------------------------------------------- */
+.globo-fondo{position:fixed; inset:0; background:rgba(0,52,61,.34); z-index:60;
+  animation:aparece .18s var(--curva) both}
+.globo{position:fixed; z-index:61; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:min(560px, calc(100vw - 28px)); max-height:min(86vh, 760px);
+  display:flex; flex-direction:column;
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  box-shadow:0 24px 60px rgba(0,52,61,.32); animation:globoEntra .24s var(--curva) both}
+/* El centrado vive en el transform, así que la entrada tiene que respetarlo:
+   una animación genérica lo pisaría y el globo se iría a una esquina. */
+@keyframes globoEntra{
+  from{opacity:0; transform:translate(-50%,-46%) scale(.985)}
+  to{opacity:1; transform:translate(-50%,-50%) scale(1)}
+}
+.globo-cab{flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:11px 14px; background:var(--ink); color:#fff; border-radius:13px 13px 0 0}
+.globo-cab b{font-size:14px}
+.globo-cab .ico{color:#dce9e8}
+.globo-cuerpo{padding:14px; overflow-y:auto; min-height:0; flex:1 1 auto;
+  display:flex; flex-direction:column; gap:11px}
+.globo-pie{flex:none; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+  padding:11px 14px; border-top:1px solid var(--border); background:var(--papel);
+  border-radius:0 0 13px 13px}
+.etiqueta{display:block; font-size:12px; color:var(--ink-muted); margin-bottom:5px}
+.colores{display:flex; gap:7px; flex-wrap:wrap}
+.muestra{width:24px; height:24px; border-radius:50%; background:var(--c); cursor:pointer;
+  border:2px solid transparent; transition:transform .15s var(--curva), box-shadow .15s var(--curva)}
+.muestra:hover{transform:scale(1.12)}
+.muestra.elegida{box-shadow:0 0 0 2px var(--surface) inset, 0 0 0 4px var(--c)}
+
+@media (max-width:640px){
+  .horas-cuerpo,.horas-cab,.todo-dia{grid-template-columns:42px repeat(var(--dias),minmax(0,1fr))}
+  .gutter-horas .h{font-size:9.5px}
+  .gcal .dia{min-height:74px}
+  .ag-pie{display:none}
+}
+
+/* ==================================================================== *
+ * Documentos: el programa y los estatutos
+ * ==================================================================== */
+
+.doc-boton{display:flex; align-items:center; gap:9px; width:100%; background:none;
+  border:1px solid transparent; border-radius:9px; padding:8px 9px; cursor:pointer;
+  text-align:left; color:var(--ink-2); margin-bottom:4px;
+  transition:background .15s var(--curva), border-color .15s var(--curva), color .15s var(--curva)}
+.doc-boton:hover{background:var(--crema); border-color:var(--border)}
+.doc-boton.activo{background:var(--crema); border-color:var(--accent-vivo); color:var(--ink)}
+.doc-boton svg{flex:none; opacity:.75}
+.doc-boton.activo svg{opacity:1; color:var(--accent-vivo)}
+.doc-boton b{display:block; font-size:12.8px; line-height:1.25}
+.doc-boton i{display:block; font-style:normal; font-size:11px; color:var(--ink-muted)}
+
+.seg.vertical{display:flex; flex-direction:column; width:100%; gap:2px; padding:3px}
+.seg.vertical button{width:100%; text-align:center}
+
+.indice-riel{display:flex; flex-direction:column; gap:1px; max-height:380px; overflow-y:auto;
+  margin:0 -4px}
+.indice-riel .ir{background:none; border:none; border-left:2px solid transparent; cursor:pointer;
+  text-align:left; padding:5px 8px; font-size:12px; line-height:1.3; color:var(--ink-2);
+  border-radius:0 5px 5px 0; transition:background .14s var(--curva), color .14s var(--curva)}
+.indice-riel .ir:hover{background:var(--crema); color:var(--ink)}
+.indice-riel .ir.activo{background:var(--crema); border-left-color:var(--accent-vivo);
+  color:var(--ink); font-weight:600}
+.indice-riel .ir.capitulo{padding-left:18px; font-size:11.5px; color:var(--ink-muted)}
+.indice-riel .ir.capitulo:hover,.indice-riel .ir.capitulo.activo{color:var(--ink-2)}
+
+/* --- texto legal: se lee como un estatuto, no como una web ---------- */
+.doc-legal{max-width:none}
+.doc-legal p{text-align:justify; hyphens:auto; margin:0 0 9px; line-height:1.62;
+  font-size:14.2px}
+/* Sin flex: un elemento con column-span:all y display:flex se recorta en
+   Chromium, y se pierde la primera letra del título. */
+.legal-titulo{margin:26px 0 4px; font-size:14px; text-transform:uppercase;
+  letter-spacing:.045em; color:var(--ink); border-bottom:2px solid var(--ramp-1);
+  padding-bottom:5px; display:block}
+.doc-legal > .legal-titulo:first-child{margin-top:4px}
+.legal-titulo .pag{float:right; margin-left:12px; font-size:11px; letter-spacing:0;
+  text-transform:none; color:var(--ink-muted); font-weight:400}
+.legal-capitulo{margin:17px 0 6px; font-size:13.5px; color:var(--accent-vivo);
+  font-weight:600; letter-spacing:.01em}
+.legal-articulo{margin-top:12px}
+.legal-articulo b{color:var(--ink)}
+.legal-letra{padding-left:22px; position:relative}
+.legal-letra::before{content:''; position:absolute; left:8px; top:.65em; width:5px; height:5px;
+  border-radius:50%; background:var(--ramp-2)}
+@media (min-width:1100px){
+  .doc-legal{column-count:2; column-gap:34px}
+  .doc-legal .legal-titulo{column-span:all}
+  /* Un artículo o un inciso no se parte entre columnas: cortarlo a la mitad
+     es justo lo que hace ilegible un estatuto. */
+  .doc-legal p{break-inside:avoid}
+  .doc-legal .legal-capitulo{break-after:avoid}
+}
+
+.card.con-barra .visor{border-radius:0; border-left:none; border-right:none}
+.card.con-barra .pdfbar{padding:0 14px 12px}
+.card.con-barra .galeria{padding:10px 14px 14px}
+
+/* --- la bisagra entre el Conectómetro y el SPT ----------------------- */
+.enlace-spt{border-radius:10px; padding:10px 12px; font-size:12.8px; line-height:1.55;
+  border:1px solid var(--border); background:var(--crema); color:var(--ink-2);
+  border-left-width:3px; margin-top:10px}
+.enlace-spt b{color:var(--ink)}
+.enlace-spt p{margin:7px 0 0}
+.enlace-spt ul{margin:6px 0 0; padding-left:17px}
+.enlace-spt li{margin:2px 0}
+.enlace-spt .btn{margin-top:8px}
+.enlace-spt.part{border-left-color:var(--accent-vivo);
+  background:color-mix(in srgb, var(--accent-vivo) 8%, var(--surface))}
+.enlace-spt.sin{border-left-color:var(--naranjo);
+  background:color-mix(in srgb, var(--naranjo) 9%, var(--surface))}
+.enlace-spt.otro{border-left-color:var(--ramp-2)}
+
+/* En pantalla angosta el riel pasa debajo del contenido: lo primero que se
+   ve es el calendario, no la lista de opciones. */
+.solo-angosto{display:none}
+@media (max-width:920px){
+  .columnas{display:flex; flex-direction:column}
+  .riel{order:2}
+  .riel .btn-crear{display:none}
+  .solo-angosto{display:inline-flex}
+}

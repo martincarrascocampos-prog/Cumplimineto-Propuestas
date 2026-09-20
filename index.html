@@ -23,13 +23,15 @@
   </div>
 </header>
 
-<nav class="tabs" role="tablist" aria-label="Secciones">
+<nav class="tabs" role="tablist" aria-label="Módulos" id="modulos">
   <button class="tab" role="tab" data-vista="panel" aria-selected="true">Panel</button>
   <button class="tab" role="tab" data-vista="propuestas" aria-selected="false">Propuestas</button>
   <button class="tab" role="tab" data-vista="equipos" aria-selected="false">Equipos</button>
   <button class="tab" role="tab" data-vista="proyecto" aria-selected="false">Proyecto</button>
-  <button class="tab" role="tab" data-vista="programa" aria-selected="false">Programa</button>
+  <button class="tab" role="tab" data-vista="programa" data-icono="documentos" aria-selected="false">Documentos</button>
 </nav>
+
+<div class="migas" id="migas" aria-label="Dónde estoy"></div>
 
 <section class="filters" id="filtros">
   <label class="field"><span>Equipo</span><select id="f-equipo"></select></label>
@@ -62,6 +64,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="core.js"></script>
 <script src="data.js"></script>
+<script src="estatutos-data.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

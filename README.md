@@ -14,6 +14,23 @@ Para el paso a paso de todas las conexiones (GitHub, Replit, Supabase, Drive y c
 ver **[CONECTAR.md](CONECTAR.md)**. Para Google Calendar, **[GOOGLE.md](GOOGLE.md)**; para los correos automáticos,
 **[CORREOS.md](CORREOS.md)**. Para saber qué hay que hacer en GitHub cuando llega un cambio,
 **[GITHUB.md](GITHUB.md)**.
+
+## El programa parte sin repartir
+
+Ninguna de las 102 propuestas viene asignada a un equipo: el reparto lo decide
+la Mesa desde el Conectómetro, en la pestaña **Propuestas**. Eso es lo que
+conecta las dos aplicaciones, en los dos sentidos:
+
+- Una propuesta que se asigne a la **Secretaría de Participación** aparece sola
+  como proyecto en el SPT, en el grupo *Del programa*.
+- Los **pasos** de ese proyecto en el SPT son las **etapas** de esa propuesta en
+  el Conectómetro: es una sola lista vista desde los dos lados. Marcar un paso
+  allá sube el porcentaje de cumplimiento acá.
+- Si la propuesta se reasigna a otro equipo, el proyecto sale de la lista del
+  SPT de Participación (y queda aparte si ya tenía trabajo hecho).
+
+Los otros seis equipos registran su avance en la ficha de la propuesta, dentro
+del Conectómetro; el SPT que existe hoy es sólo el de Participación.
 Los arreglos pendientes están en **[AUDITORIA.md](AUDITORIA.md)**.
 
 Para una versión de **un solo archivo** que se abre con doble clic (las dos secciones y el PDF

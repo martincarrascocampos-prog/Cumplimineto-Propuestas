@@ -36,33 +36,59 @@ const PLANTILLA_ETAPAS = [
   'Verificación y cuenta pública'
 ];
 
-/* El PDF original y las miniaturas viven en la carpeta programa/.
-   En la versión de un solo archivo llegan incrustados en window.PDF_INLINE
-   y window.MINIS_INLINE. */
-const RECURSOS = (() => {
-  let urlPdf = null;
-  const desdeBase64 = (b64, tipo) => {
-    const bin = atob(b64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return URL.createObjectURL(new Blob([bytes], { type: tipo }));
-  };
-  return {
-    paginas: 57,
+/* Los dos documentos: el programa y los estatutos. Cada uno tiene su PDF
+   original y sus miniaturas de página. En la versión de un solo archivo
+   llegan incrustados en window.PDF_INLINE y window.MINIS_INLINE, con una
+   entrada por documento. */
+const desdeBase64 = (b64, tipo) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: tipo }));
+};
+
+function documento(clave, def) {
+  let url = null;
+  return Object.assign({
+    clave,
     pdf() {
-      if (urlPdf) return urlPdf;
-      urlPdf = window.PDF_INLINE
-        ? desdeBase64(window.PDF_INLINE, 'application/pdf')
-        : 'programa/programa-conectemos-la-chile.pdf';
-      return urlPdf;
+      if (url) return url;
+      const inc = window.PDF_INLINE && window.PDF_INLINE[clave];
+      url = inc ? desdeBase64(inc, 'application/pdf') : def.archivo;
+      return url;
     },
     miniatura(n) {
-      return window.MINIS_INLINE
-        ? 'data:image/webp;base64,' + window.MINIS_INLINE[n - 1]
-        : `programa/paginas/p${String(n).padStart(2, '0')}.webp`;
+      const inc = window.MINIS_INLINE && window.MINIS_INLINE[clave];
+      return inc ? 'data:image/webp;base64,' + inc[n - 1]
+                 : `${def.carpeta}/p${String(n).padStart(2, '0')}.webp`;
     }
-  };
-})();
+  }, def);
+}
+
+const DOCUMENTOS = {
+  programa: documento('programa', {
+    nombre: 'Programa Conectemos la Chile',
+    bajada: 'El programa con que la Mesa se presentó a la FECh 2026',
+    icono: 'programa',
+    paginas: 57,
+    archivo: 'programa/programa-conectemos-la-chile.pdf',
+    carpeta: 'programa/paginas',
+    descarga: 'Programa-Conectemos-la-Chile-FECh-2026.pdf'
+  }),
+  estatutos: documento('estatutos', {
+    nombre: 'Estatutos FECh',
+    bajada: (typeof ESTATUTOS !== 'undefined' && ESTATUTOS.bajada) || 'Estatutos de la Federación',
+    icono: 'estatutos',
+    paginas: (typeof ESTATUTOS !== 'undefined' && ESTATUTOS.paginas) || 47,
+    archivo: 'estatutos/estatutos-fech.pdf',
+    carpeta: 'estatutos/paginas',
+    descarga: 'Estatutos-FECh.pdf'
+  })
+};
+
+/* Compatibilidad: el resto del código pedía el programa sin nombrarlo. */
+const RECURSOS = DOCUMENTOS.programa;
+
 
 /* Los colores del programa impreso, en el orden que pasó la revisión de
    contraste y daltonismo. */
@@ -553,9 +579,17 @@ function abrirPropuesta(p) {
 
   /* Seguimiento */
   const selEquipo = el('select', { disabled: editable ? null : 'disabled' });
+  selEquipo.appendChild(el('option', { value: '', text: 'Sin asignar' }));
   estado.equipos.forEach(e => selEquipo.appendChild(el('option', { value: e.id, text: e.nombre })));
   selEquipo.value = p.eq || '';
-  selEquipo.addEventListener('change', () => { p.eq = selEquipo.value; guardar(); });
+  const avisoEnlace = el('div', {});
+  const pintarEnlace = () => {
+    avisoEnlace.innerHTML = '';
+    avisoEnlace.appendChild(notaEnlaceSPT(p));
+  };
+  selEquipo.addEventListener('change', () => {
+    p.eq = selEquipo.value; guardar(); pintarEnlace(); refrescar();
+  });
 
   const selEstado = el('select', { disabled: editable ? null : 'disabled' });
   ESTADOS.forEach(e => selEstado.appendChild(el('option', { value: e.id, text: e.txt })));
@@ -606,8 +640,10 @@ function abrirPropuesta(p) {
       el('label', { class: 'field' }, [el('span', { text: 'Avance %' }), inAvance]),
       el('label', { class: 'field' }, [el('span', { text: 'Plazo comprometido' }), inFecha])
     ]),
+    avisoEnlace,
     el('div', { style: 'margin-top:10px' }, resumenAvance)
   ]));
+  pintarEnlace();
 
   /* Etapas */
   const listaEtapas = el('div', {});
@@ -624,7 +660,18 @@ function abrirPropuesta(p) {
   pintarEtapas();
 
   const bloqueEtapas = el('div', { class: 'bloque' }, [
-    el('h3', { text: 'Etapas de cumplimiento' }), listaEtapas
+    el('h3', { text: 'Etapas de cumplimiento' }),
+    /* La otra mitad de la bisagra: estas etapas y los pasos del SPT son la
+       misma fila en la base. Conviene decirlo donde se editan. */
+    p.eq === 'PART'
+      ? el('div', { class: 'enlace-spt part', style: 'margin:0 0 10px' }, [
+          el('b', { text: 'Estas etapas son los pasos del SPT.' }),
+          document.createTextNode(' Lo que se agregue o se marque acá aparece en el proyecto ' +
+            'del SPT de Participación, y lo que el equipo marque allá sube el avance acá. ' +
+            'Es una sola lista, vista desde los dos lados.')
+        ])
+      : null,
+    listaEtapas
   ]);
   if (editable) {
     const inEtapa = el('input', { type: 'text', placeholder: 'Nueva etapa (ej.: reunión con la VAEC)' });
@@ -734,6 +781,35 @@ function vistaPanel(raiz) {
   raiz.appendChild(el('div', { class: 'card' }, [
     el('h2', { text: 'Estado general' }),
     el('div', { class: 'sub', text: 'Sobre las propuestas que pasan el filtro activo' }), kpis
+  ]));
+
+  /* El reparto del trabajo: nada viene asignado de fábrica, así que lo
+     primero que hay que hacer con el sistema es repartir las 102. */
+  const sinEquipo = lista.filter(p => !p.eq).length;
+  const enPart = lista.filter(p => p.eq === 'PART').length;
+  raiz.appendChild(el('div', { class: 'card' }, [
+    el('h2', { text: 'Reparto por equipo' }),
+    el('div', { class: 'sub', text: sinEquipo
+      ? `${sinEquipo} de ${lista.length} propuestas todavía no tienen equipo responsable.`
+      : 'Todas las propuestas tienen equipo responsable.' }),
+    sinEquipo === lista.length
+      ? el('div', { class: 'enlace-spt sin' }, [
+          el('b', { text: 'El programa parte sin repartir.' }),
+          el('p', { text: 'Ninguna propuesta viene asignada: el reparto lo decide la Mesa. ' +
+            'Ve a Propuestas, abre cada una y elige el equipo responsable. Las que queden en ' +
+            'la Secretaría de Participación aparecen automáticamente como proyectos en el SPT, ' +
+            'y los pasos que se registren allá suben el cumplimiento acá.' }),
+          el('button', { class: 'btn btn-sm btn-primary', type: 'button',
+            text: 'Ir a repartir las propuestas →',
+            onclick: () => irAVista('propuestas') })
+        ])
+      : el('div', { class: 'enlace-spt part' }, [
+          el('b', { text: `${enPart} en la Secretaría de Participación.` }),
+          document.createTextNode(enPart
+            ? ' Esas son las que el SPT de Participación muestra como proyectos del programa; ' +
+              'sus pasos son las etapas que se ven acá.'
+            : ' Cuando una propuesta quede en Participación, aparecerá sola en su SPT.')
+        ])
   ]));
 
   const cardEstados = el('div', { class: 'card' }, [
@@ -1183,94 +1259,240 @@ function listadoEtapas(raiz, lista, editable) {
   raiz.appendChild(card);
 }
 
-/* ------------------------------------------------------------------ *
- * 11. Vista: Programa (lectura del documento y PDF original)
- * ------------------------------------------------------------------ */
-let subPrograma = 'lectura';
-
-function vistaPrograma(raiz) {
-  const seg = el('div', { class: 'seg' }, [
-    el('button', { type: 'button', text: 'Lectura', 'aria-pressed': String(subPrograma === 'lectura'),
-      onclick: () => { subPrograma = 'lectura'; render(); } }),
-    el('button', { type: 'button', text: 'PDF original', 'aria-pressed': String(subPrograma === 'pdf'),
-      onclick: () => { subPrograma = 'pdf'; render(); } })
+/* Dónde cae una propuesta según el equipo que la tenga. Es la bisagra
+   entre las dos aplicaciones y conviene que se vea, no que se adivine:
+   asignar acá crea el proyecto allá, y los pasos de allá son estas etapas. */
+function notaEnlaceSPT(p) {
+  const eq = equipoDe(p.eq);
+  if (!eq) {
+    return el('div', { class: 'enlace-spt sin' }, [
+      el('b', { text: 'Sin asignar.' }),
+      document.createTextNode(' Mientras no tenga equipo, esta propuesta no aparece en ' +
+        'ningún sistema de planificación. Elige el equipo responsable arriba.')
+    ]);
+  }
+  if (eq.id === 'PART') {
+    return el('div', { class: 'enlace-spt part' }, [
+      el('b', { text: 'Asignada a ' + eq.nombre + '.' }),
+      document.createTextNode(' Ya aparece como proyecto en el SPT de Participación, en el ' +
+        'grupo "Del programa". Los pasos que le pongan allá son estas mismas etapas: ' +
+        'marcar un paso allá sube el avance acá.'),
+      el('a', { class: 'btn btn-sm', style: 'margin-top:8px',
+        href: window.UNARCHIVO ? '#' : 'spt.html',
+        onclick: window.UNARCHIVO ? (e => { e.preventDefault(); window.irASeccion('spt'); }) : null,
+        text: 'Ver en el SPT →' })
+    ]);
+  }
+  return el('div', { class: 'enlace-spt otro' }, [
+    el('b', { text: 'Asignada a ' + eq.nombre + '.' }),
+    document.createTextNode(' El seguimiento lo lleva ese equipo. El SPT que existe hoy es ' +
+      'sólo el de Participación; los demás equipos registran su avance acá, en esta ficha.')
   ]);
-  raiz.appendChild(el('div', { class: 'card', style: 'padding:12px 16px' }, el('div', { class: 'toolbar',
-    style: 'margin:0' }, [
-    el('div', {}, [
-      el('h2', { text: 'Programa Conectemos la Chile · FECh 2026' }),
-      el('div', { class: 'sub', style: 'margin:0', text: subPrograma === 'lectura'
-        ? 'El texto del documento, propuesta por propuesta.'
-        : 'El documento original, tal como se imprime.' })
-    ]),
-    el('span', { class: 'count' }), seg
-  ])));
-  if (subPrograma === 'pdf') programaPDF(raiz);
-  else programaLectura(raiz);
 }
 
-/* Vista previa del PDF: galería de páginas y visor del archivo original. */
-function programaPDF(raiz) {
-  const url = RECURSOS.pdf();
-  let pagina = 1;
+/* ------------------------------------------------------------------ *
+ * 11. Documentos: el programa y los estatutos
+ *
+ * Un riel a la izquierda elige el documento, la forma de verlo y el punto
+ * del índice; a la derecha va el contenido. Los dos documentos se pueden
+ * leer transcritos o mirar en su PDF original, página por página.
+ * ------------------------------------------------------------------ */
+let docActual = 'programa';
+let subPrograma = 'lectura';     /* lectura · pdf */
+let seccionEstatuto = null;      /* índice del título o capítulo elegido */
 
-  const visor = el('iframe', { class: 'visor', title: 'Programa Conectemos la Chile (PDF)',
+function vistaPrograma(raiz) {
+  const doc = DOCUMENTOS[docActual];
+
+  /* --- riel: qué documento, cómo verlo y por dónde entrar --- */
+  const riel = el('aside', { class: 'riel' });
+
+  const elegir = el('div', { class: 'card' }, el('h3', { text: 'Documentos' }));
+  Object.values(DOCUMENTOS).forEach(d => {
+    elegir.appendChild(el('button', {
+      class: 'doc-boton' + (d.clave === docActual ? ' activo' : ''), type: 'button',
+      onclick: () => { docActual = d.clave; seccionEstatuto = null; render(); }
+    }, [
+      UI.icono(d.icono, 22),
+      el('span', {}, [el('b', { text: d.nombre }),
+        el('i', { text: `${d.paginas} páginas` })])
+    ]));
+  });
+  riel.appendChild(elegir);
+
+  const modo = el('div', { class: 'card' }, [
+    el('h3', { text: 'Cómo verlo' }),
+    el('div', { class: 'seg vertical' }, [
+      el('button', { type: 'button', text: 'Lectura', 'aria-pressed': String(subPrograma === 'lectura'),
+        onclick: () => { subPrograma = 'lectura'; render(); } }),
+      el('button', { type: 'button', text: 'PDF original', 'aria-pressed': String(subPrograma === 'pdf'),
+        onclick: () => { subPrograma = 'pdf'; render(); } })
+    ]),
+    el('a', { class: 'btn btn-sm', style: 'margin-top:9px; justify-content:center',
+      href: doc.pdf(), download: doc.descarga, text: '↓ Descargar el PDF' }),
+    el('a', { class: 'btn btn-sm', style: 'margin-top:6px; justify-content:center',
+      href: doc.pdf(), target: '_blank', rel: 'noopener', text: 'Abrir en otra pestaña' })
+  ]);
+  riel.appendChild(modo);
+
+  if (subPrograma === 'lectura') {
+    riel.appendChild(docActual === 'programa' ? indicePrograma() : indiceEstatutos());
+  }
+
+  /* --- contenido --- */
+  const centro = el('div', {});
+  const cab = el('div', { class: 'barra-seccion' }, [
+    el('div', {}, [
+      el('h2', { text: doc.nombre }),
+      el('div', { class: 'sub', text: subPrograma === 'lectura'
+        ? doc.bajada : `El documento original: ${doc.paginas} páginas tal cual.` })
+    ]),
+    el('span', { class: 'mini', style: 'color:#a9c4c3',
+      text: docActual === 'estatutos' && typeof ESTATUTOS !== 'undefined'
+        ? `${ESTATUTOS.articulos} artículos` : '102 propuestas' })
+  ]);
+  const cuerpo = el('div', { class: 'card con-barra' }, cab);
+  centro.appendChild(cuerpo);
+
+  if (subPrograma === 'pdf') visorPDF(cuerpo, doc);
+  else if (docActual === 'programa') programaLectura(cuerpo);
+  else estatutosLectura(cuerpo);
+
+  raiz.appendChild(el('div', { class: 'columnas' }, [riel, centro]));
+}
+
+function indicePrograma() {
+  const ejeFiltrado = filtros.eje ? Number(filtros.eje) : null;
+  const caja = el('div', { class: 'card' }, el('h3', { text: 'Ejes del programa' }));
+  const lista = el('div', { class: 'indice-riel' });
+  lista.appendChild(el('button', {
+    class: 'ir' + (ejeFiltrado ? '' : ' activo'), type: 'button', text: 'Todo el programa',
+    onclick: () => { filtros.eje = ''; poblarFiltros(); render(); } }));
+  estado.ejes.forEach(ej => lista.appendChild(el('button', {
+    class: 'ir' + (ejeFiltrado === ej.id ? ' activo' : ''), type: 'button',
+    text: `${ej.id}. ${ej.corto || ej.nombre}`,
+    onclick: () => { filtros.eje = String(ej.id); poblarFiltros(); render(); } })));
+  caja.appendChild(lista);
+  return caja;
+}
+
+function indiceEstatutos() {
+  const caja = el('div', { class: 'card' }, el('h3', { text: 'Índice' }));
+  const lista = el('div', { class: 'indice-riel' });
+  lista.appendChild(el('button', {
+    class: 'ir' + (seccionEstatuto === null ? ' activo' : ''), type: 'button',
+    text: 'Todo el estatuto',
+    onclick: () => { seccionEstatuto = null; render(); } }));
+  ESTATUTOS.indice.forEach((entrada, i) => {
+    const [tipo, pagina, texto] = entrada;
+    lista.appendChild(el('button', {
+      class: 'ir ' + tipo + (seccionEstatuto === i ? ' activo' : ''), type: 'button',
+      title: texto + ` · página ${pagina}`,
+      text: UI.recorta(texto.replace(/\s*\(p\.\s*\d+\)\s*$/, ''), tipo === 'capitulo' ? 46 : 52),
+      onclick: () => { seccionEstatuto = i; render(); } }));
+  });
+  caja.appendChild(lista);
+  return caja;
+}
+
+/* Visor del PDF: el archivo original arriba y las páginas abajo. */
+function visorPDF(raiz, doc) {
+  const url = doc.pdf();
+  const visor = el('iframe', { class: 'visor', title: `${doc.nombre} (PDF)`,
     src: url + '#page=1&view=FitH' });
+  const indicador = el('span', { class: 'mini' });
 
-  const indicador = el('span', { style: 'font-size:12.5px;color:var(--ink-muted)' });
   const irA = n => {
-    pagina = n;
     visor.src = `${url}#page=${n}&view=FitH`;
-    indicador.textContent = `Página ${n} de ${RECURSOS.paginas}`;
+    indicador.textContent = `Página ${n} de ${doc.paginas}`;
     galeria.querySelectorAll('.pagina').forEach((b, i) =>
       b.setAttribute('aria-current', String(i + 1 === n)));
     visor.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const galeria = el('div', { class: 'galeria' });
-  for (let n = 1; n <= RECURSOS.paginas; n++) {
+  for (let n = 1; n <= doc.paginas; n++) {
     galeria.appendChild(el('button', { class: 'pagina', type: 'button',
       'aria-current': String(n === 1), title: `Ir a la página ${n}`, onclick: () => irA(n) }, [
-      el('img', { src: RECURSOS.miniatura(n), alt: `Página ${n} del programa`, loading: 'lazy' }),
+      el('img', { src: doc.miniatura(n), alt: `Página ${n} de ${doc.nombre}`, loading: 'lazy' }),
       el('span', { text: String(n) })
     ]));
   }
-  indicador.textContent = `Página 1 de ${RECURSOS.paginas}`;
+  indicador.textContent = `Página 1 de ${doc.paginas}`;
 
-  const barra = el('div', { class: 'pdfbar' }, [
-    el('a', { class: 'btn btn-primary', href: url, download: 'Programa-Conectemos-la-Chile-FECh-2026.pdf',
-      text: 'Descargar el PDF' }),
-    el('a', { class: 'btn', href: url, target: '_blank', rel: 'noopener', text: 'Abrir en otra pestaña' }),
+  raiz.appendChild(el('div', { class: 'pdfbar' }, [
+    el('a', { class: 'btn btn-sm btn-primary', href: url, download: doc.descarga,
+      text: '↓ Descargar' }),
+    el('a', { class: 'btn btn-sm', href: url, target: '_blank', rel: 'noopener',
+      text: 'Abrir en otra pestaña' }),
     indicador
-  ]);
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Documento original' }),
-    el('div', { class: 'sub', text: 'Las 57 páginas tal cual, sin intervención.' }),
-    barra, visor
   ]));
+  raiz.appendChild(visor);
+  raiz.appendChild(el('div', { class: 'sec-titulo', style: 'padding:14px 14px 0' },
+    el('h2', { text: 'Páginas · toca una para abrirla arriba' })));
+  raiz.appendChild(galeria);
+}
 
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Páginas' }),
-    el('div', { class: 'sub', text: 'Toca una página para abrirla en el visor de arriba.' }),
-    galeria
-  ]));
+/* Lectura de los estatutos: el texto transcrito, con el índice al costado. */
+function estatutosLectura(raiz) {
+  const busca = (filtros.texto || '').trim().toLowerCase();
+
+  /* Desde el título elegido hasta el siguiente del mismo nivel o mayor. */
+  let bloques = ESTATUTOS.bloques;
+  if (seccionEstatuto !== null && ESTATUTOS.indice[seccionEstatuto]) {
+    const objetivo = ESTATUTOS.indice[seccionEstatuto];
+    const desde = bloques.findIndex(b => b[0] === objetivo[0] && b[2] === objetivo[2]);
+    if (desde >= 0) {
+      const corta = objetivo[0] === 'titulo'
+        ? t => t === 'titulo'
+        : t => t === 'titulo' || t === 'capitulo';
+      let hasta = bloques.length;
+      for (let i = desde + 1; i < bloques.length; i++) {
+        if (corta(bloques[i][0])) { hasta = i; break; }
+      }
+      bloques = bloques.slice(desde, hasta);
+    }
+  }
+  if (busca) bloques = bloques.filter(b => b[2].toLowerCase().includes(busca));
+
+  const doc = el('div', { class: 'doc doc-legal' });
+  if (!bloques.length) {
+    doc.appendChild(el('div', { class: 'empty',
+      text: busca ? `Ningún párrafo dice "${filtros.texto}".` : 'Nada que mostrar.' }));
+  }
+
+  bloques.forEach(([tipo, pagina, texto]) => {
+    if (tipo === 'titulo') {
+      doc.appendChild(el('h3', { class: 'legal-titulo' }, [
+        document.createTextNode(texto.replace(/\s*\(p\.\s*\d+\)\s*$/, '')),
+        el('span', { class: 'pag', text: 'p. ' + pagina })
+      ]));
+    } else if (tipo === 'capitulo') {
+      doc.appendChild(el('h4', { class: 'legal-capitulo', text: texto }));
+    } else if (tipo === 'articulo') {
+      const m = texto.match(/^((?:Art[íi]culo|Art\.)\s*\d+\s*[.ºª]?)\s*(.*)$/s);
+      doc.appendChild(el('p', { class: 'legal-articulo' }, [
+        el('b', { text: m ? m[1] : 'Artículo' }),
+        document.createTextNode(' ' + (m ? m[2] : texto))
+      ]));
+    } else if (tipo === 'letra') {
+      doc.appendChild(el('p', { class: 'legal-letra', text: texto }));
+    } else {
+      doc.appendChild(el('p', { text: texto }));
+    }
+  });
+
+  if (!busca && seccionEstatuto === null && ESTATUTOS.vigencia.length) {
+    raiz.appendChild(el('div', { class: 'enlace-spt otro', style: 'margin:0 14px 12px' }, [
+      el('b', { text: 'Vigencia' }),
+      el('ul', {}, ESTATUTOS.vigencia.map(v => el('li', { text: v })))
+    ]));
+  }
+  raiz.appendChild(el('div', { style: 'padding:0 14px 14px' }, doc));
 }
 
 function programaLectura(raiz) {
   const ejeFiltrado = filtros.eje ? Number(filtros.eje) : null;
-
-  const indice = el('div', { class: 'indice' }, estado.ejes.map(ej =>
-    el('button', { class: 'btn btn-sm' + (ejeFiltrado === ej.id ? ' btn-primary' : ''), type: 'button',
-      text: `${ej.id}. ${ej.corto || ej.nombre}`,
-      onclick: () => { filtros.eje = ejeFiltrado === ej.id ? '' : String(ej.id); poblarFiltros(); render(); } })));
-
-  raiz.appendChild(el('div', { class: 'card' }, [
-    el('h2', { text: 'Índice' }),
-    el('div', { class: 'sub', text: 'Toca un eje para leerlo solo, o usa el buscador de arriba.' }),
-    indice,
-    ejeFiltrado ? el('div', { class: 'note', text: 'Mostrando un eje. Vuelve a tocar el botón para ver el programa completo.' }) : null
-  ]));
 
   const doc = el('div', { class: 'doc' });
   if (!ejeFiltrado && !filtros.texto) {
@@ -1309,7 +1531,7 @@ function programaLectura(raiz) {
   });
 
   if (!doc.querySelector('.prop')) doc.appendChild(el('div', { class: 'empty', text: 'Ninguna propuesta coincide con el filtro.' }));
-  raiz.appendChild(el('div', { class: 'card' }, doc));
+  raiz.appendChild(el('div', { style: 'padding:0 14px 14px' }, doc));
 }
 
 /* ------------------------------------------------------------------ *
@@ -1335,6 +1557,17 @@ function mostrarEstructura(visible) {
   if (filtros) filtros.style.display = visible ? '' : 'none';
 }
 
+/* Cambiar de módulo desde cualquier parte, no sólo desde la barra. */
+function irAVista(destino) {
+  vista = destino;
+  marcarTab();
+  render();
+}
+function marcarTab() {
+  document.querySelectorAll('.tab').forEach(b =>
+    b.setAttribute('aria-selected', String(b.dataset.vista === vista)));
+}
+
 function render() {
   redibujables = [];
   UI.pintarConexion(document.querySelector('#conexion'));
@@ -1348,6 +1581,10 @@ function render() {
     return;
   }
   mostrarEstructura(true);
+  UI.pintarModulos(document.querySelector('#modulos'));
+  UI.migas(document.querySelector('#migas'), ['FECh 2026', 'Conectómetro', {
+    panel: 'Panel', propuestas: 'Propuestas', equipos: 'Equipos',
+    proyecto: 'Proyecto', programa: 'Documentos' }[vista] || 'Panel']);
   if (vista === 'propuestas') vistaPropuestas(raiz);
   else if (vista === 'equipos') vistaEquipos(raiz);
   else if (vista === 'proyecto') vistaProyecto(raiz);
@@ -1366,11 +1603,8 @@ async function iniciar() {
   addEventListener('focusout', () => setTimeout(() => Datos.soltarPendiente(), 150));
   if (recuperadas) console.info(`Se recuperaron ${recuperadas} propuestas de la versión anterior.`);
 
-  document.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => {
-    vista = btn.dataset.vista;
-    document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b === btn)));
-    render();
-  }));
+  document.querySelectorAll('.tab').forEach(btn =>
+    btn.addEventListener('click', () => irAVista(btn.dataset.vista)));
 
   const bind = (sel, campo) => $(sel).addEventListener('input', e => {
     filtros[campo] = e.target.value; render();

@@ -330,6 +330,56 @@ const UI = {
     (Array.isArray(hijos) ? hijos : [hijos]).forEach(h => h && n.appendChild(h));
     return n;
   },
+  /* Íconos de línea para la barra de módulos, al modo de U-Cursos: un
+     pictograma simple por sección, dibujado con una sola pluma. */
+  icono(nombre, tam = 20) {
+    const D = {
+      panel:      'M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z',
+      propuestas: 'M4 6h16M4 12h16M4 18h10',
+      equipos:    'M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11Zm7.5.5a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2ZM2.5 19.5c0-3 2.9-4.6 6.5-4.6s6.5 1.6 6.5 4.6M17 14.6c2.7.3 4.5 1.7 4.5 4',
+      proyecto:   'M5 3v18M5 4h9l-1.4 3L14 10H5',
+      documentos: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H18v18H6.5A1.5 1.5 0 0 1 5 19.5v-15ZM5 17.5h13M9 7.5h5',
+      tablero:    'M4 5h5v14H4V5Zm5.5 0h5v9h-5V5Zm5.5 0h5v11h-5V5Z',
+      calendario: 'M4 6.5h16v14H4v-14Zm0 4.5h16M8.5 4v4M15.5 4v4',
+      equipo:     'M9 11a3.2 3.2 0 1 0 0-6.4A3.2 3.2 0 0 0 9 11Zm7.5.5a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2ZM2.5 19.5c0-3 2.9-4.6 6.5-4.6s6.5 1.6 6.5 4.6M17 14.6c2.7.3 4.5 1.7 4.5 4',
+      programa:   'M4 5.5c2.8-1.3 5.2-1.3 8 0v13c-2.8-1.3-5.2-1.3-8 0v-13Zm8 0c2.8-1.3 5.2-1.3 8 0v13c-2.8-1.3-5.2-1.3-8 0',
+      estatutos:  'M12 4.5 4.5 7.5v5c0 4 3.1 6.6 7.5 7.9 4.4-1.3 7.5-3.9 7.5-7.9v-5L12 4.5Zm-2.6 7.9 2 2 3.8-3.8'
+    };
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', tam); svg.setAttribute('height', tam);
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.7');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', D[nombre] || D.panel);
+    svg.appendChild(path);
+    return svg;
+  },
+  /* Pone el ícono dentro de cada botón de la barra de módulos. El router no
+     cambia: los botones siguen siendo los mismos, con su data-vista. */
+  pintarModulos(nodo) {
+    if (!nodo) return;
+    nodo.querySelectorAll('.tab').forEach(b => {
+      if (b.querySelector('svg')) return;
+      const texto = b.textContent.trim();
+      b.textContent = '';
+      b.appendChild(UI.icono(b.dataset.icono || b.dataset.vista));
+      b.appendChild(UI.el('span', { text: texto }));
+    });
+  },
+  /* Migas de pan: dónde estoy dentro del sistema. */
+  migas(nodo, pasos) {
+    if (!nodo) return;
+    nodo.innerHTML = '';
+    pasos.forEach((p, i) => {
+      if (i) nodo.appendChild(UI.el('i', { 'aria-hidden': 'true', text: '›' }));
+      nodo.appendChild(UI.el('span', { text: p, 'aria-current': i === pasos.length - 1 ? 'page' : null }));
+    });
+  },
   pct: v => `${Math.round(v)}%`,
   hoy: () => new Date().toISOString().slice(0, 10),
   recorta: (t, max) => (String(t).length > max ? String(t).slice(0, max - 1) + '…' : String(t)),
@@ -342,7 +392,8 @@ const UI = {
   horaDe(iso) {
     if (!iso || iso.length <= 10) return '';
     const d = new Date(iso);
-    return isNaN(d) ? '' : d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' });
+    return isNaN(d) ? '' : d.toLocaleTimeString('es-CL',
+      { hour: '2-digit', minute: '2-digit', hour12: false });
   },
   /* Marca el estado de la conexión en la barra superior. */
   pintarConexion(nodo) {
