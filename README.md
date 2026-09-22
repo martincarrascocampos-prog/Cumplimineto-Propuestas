@@ -32,6 +32,8 @@ conecta las dos aplicaciones, en los dos sentidos:
 Los otros seis equipos registran su avance en la ficha de la propuesta, dentro
 del Conectómetro; el SPT que existe hoy es sólo el de Participación.
 Los arreglos pendientes están en **[AUDITORIA.md](AUDITORIA.md)**.
+La descripción completa del sistema, para revisión externa, está en
+**[ESPECIFICACION.md](ESPECIFICACION.md)**.
 
 Para una versión de **un solo archivo** que se abre con doble clic (las dos secciones y el PDF
 del programa adentro, sin carpeta ni servidor):
